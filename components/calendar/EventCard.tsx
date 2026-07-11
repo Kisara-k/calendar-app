@@ -2,11 +2,11 @@ import { Link2 } from 'lucide-react'
 import { formatTime } from '@/lib/calendar/date'
 import type { CalendarBlock, CalendarCategory, CalendarSettings } from '@/lib/calendar/types'
 
-type Props={block:CalendarBlock;category:CalendarCategory;settings:CalendarSettings;top:number;height:number;left:number;width:number;selected:boolean;ghost?:boolean;onPointerDown?:(e:React.PointerEvent,kind:'move'|'resize',block:CalendarBlock)=>void;onSelect?:((e:React.MouseEvent)=>void)}
+type Props={block:CalendarBlock;category:CalendarCategory;settings:CalendarSettings;top:number;height:number;left:number;width:number;selected:boolean;ghost?:boolean;onPointerDown?:(e:React.PointerEvent,kind:'move'|'resize',block:CalendarBlock)=>void;onSelect?:((e:React.MouseEvent)=>void);onContextMenu?:((e:React.MouseEvent)=>void)}
 
-export function EventCard({block,category,settings,top,height,left,width,selected,ghost,onPointerDown,onSelect}:Props){
+export function EventCard({block,category,settings,top,height,left,width,selected,ghost,onPointerDown,onSelect,onContextMenu}:Props){
   const compact=height<39
-  return <button className={`calendar-event ${selected?'selected ':''}${ghost?'ghost ':''}${compact?'micro':''}`} style={{top,height,left:`${left}%`,width:`${width}%`,'--event-color':category.color} as React.CSSProperties} onPointerDown={ghost?undefined:e=>onPointerDown?.(e,'move',block)} onClick={e=>{e.stopPropagation();onSelect?.(e)}} data-block-id={block.id} aria-label={`${block.title}, ${formatTime(block.start,settings.timeFormat)} to ${formatTime(block.end,settings.timeFormat)}`}>
+  return <button className={`calendar-event ${selected?'selected ':''}${ghost?'ghost ':''}${compact?'micro':''}`} style={{top,height,left:`${left}%`,width:`${width}%`,'--event-color':category.color} as React.CSSProperties} onPointerDown={ghost?undefined:e=>onPointerDown?.(e,'move',block)} onClick={e=>{e.stopPropagation();onSelect?.(e)}} onContextMenu={ghost?undefined:e=>{e.preventDefault();e.stopPropagation();onContextMenu?.(e)}} data-block-id={block.id} aria-label={`${block.title||'Untitled block'}, ${formatTime(block.start,settings.timeFormat)} to ${formatTime(block.end,settings.timeFormat)}`}>
     <b>{block.title}</b>{!compact&&<span>{formatTime(block.start,settings.timeFormat)} – {formatTime(block.end,settings.timeFormat)}</span>}{block.sourcePlanId&&!ghost&&<Link2 size={9}/>} {!ghost&&<i className="resize-handle" onPointerDown={e=>{e.stopPropagation();onPointerDown?.(e,'resize',block)}}/>}
   </button>
 }

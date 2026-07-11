@@ -9,7 +9,10 @@ export type CalendarCategory = {
   name: string
   color: string
   visible: boolean
+  groupId?: string
 }
+
+export type CalendarGroup = { id:string; name:string }
 
 export type CalendarBlock = {
   id: string
@@ -31,6 +34,8 @@ export type CalendarSettings = {
   snapMinutes: 5 | 10 | 15 | 30
   defaultDuration: number
   density: 'compact' | 'default' | 'comfortable'
+  hourScale: number
+  defaultCategoryId: string
   showWeekends: boolean
   timeFormat: '12h' | '24h'
   underlayOpacity: number
@@ -40,5 +45,8 @@ export type CalendarData = {
   version: 2
   blocks: CalendarBlock[]
   categories: CalendarCategory[]
+  groups: CalendarGroup[]
   settings: CalendarSettings
+  quoteBank: string[]
+  currentQuote: string
 }
