@@ -1,0 +1,3 @@
+import { Keyboard, X } from 'lucide-react'
+const shortcuts=[['Command menu','Ctrl / ⌘ K'],['New block','N'],['Today','T'],['Previous / next','← / →'],['Day / Week / Month','D / W / M'],['Plan / Actual','1 / 2'],['Search','/'],['Insights','I'],['Delete selected','Delete'],['Close / clear','Esc']]
+export function ShortcutsPanel({onClose}:{onClose:()=>void}){return <aside className="context-panel shortcuts-panel"><div className="panel-head"><span><Keyboard size={15}/>Keyboard shortcuts</span><button className="quiet-icon" aria-label="Close shortcuts" onClick={onClose}><X size={16}/></button></div><div className="shortcut-list">{shortcuts.map(([name,key])=><div key={name}><span>{name}</span><kbd>{key}</kbd></div>)}</div></aside>}

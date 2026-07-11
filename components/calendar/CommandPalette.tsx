@@ -1,0 +1,6 @@
+'use client'
+import { BarChart3, CalendarDays, Check, Command, Moon, Search, Settings2, Target, X } from 'lucide-react'
+import { useState } from 'react'
+type Action={label:string;hint:string;icon:React.ReactNode;run:()=>void}
+export function CommandPalette({onClose,actions}:{onClose:()=>void;actions:Action[]}){const [q,setQ]=useState('');const visible=actions.filter(a=>a.label.toLowerCase().includes(q.toLowerCase()));return <div className="palette-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><div className="command-palette"><div className="command-input"><Search size={17}/><input autoFocus placeholder="Search commands…" value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>{if(e.key==='Escape')onClose()}}/><kbd>ESC</kbd></div><div className="command-results"><small>COMMANDS</small>{visible.map(a=><button key={a.label} onClick={()=>{a.run();onClose()}}>{a.icon}<span>{a.label}</span><kbd>{a.hint}</kbd></button>)}</div><footer><span><Command size={12}/>Tempo command menu</span><span>↑↓ navigate · ↵ select</span></footer></div></div>}
+export const commandIcons={day:<CalendarDays size={15}/>,plan:<Target size={15}/>,actual:<Check size={15}/>,insights:<BarChart3 size={15}/>,settings:<Settings2 size={15}/>,theme:<Moon size={15}/>,close:<X size={15}/>}
