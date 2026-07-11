@@ -1,5 +1,7 @@
 import demoCalendar from '@/data/demo-calendar.json'
+import eventTemplates from '@/data/demo-event-templates.json'
 import type { CalendarData } from './types'
+import { addDays, startOfWeek, toISO } from './date'
 
 function isCalendarData(value: unknown): value is CalendarData {
   if (!value || typeof value !== 'object') return false
@@ -14,5 +16,7 @@ export function normalizeCalendarData(value: CalendarData): CalendarData {
 
 export function loadDemoCalendar(): CalendarData {
   if (!isCalendarData(demoCalendar)) throw new Error('The bundled demo calendar is invalid')
-  return normalizeCalendarData(structuredClone(demoCalendar) as CalendarData)
+  const base=normalizeCalendarData(structuredClone(demoCalendar) as CalendarData),week=startOfWeek(new Date())
+  const blocks=eventTemplates.map((template,index)=>({...template,id:`demo-${template.layer}-${index+1}`,date:toISO(addDays(week,template.weekday))}))
+  return {...base,blocks} as CalendarData
 }

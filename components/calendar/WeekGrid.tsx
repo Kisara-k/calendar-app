@@ -79,6 +79,7 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
   function end(e:React.PointerEvent){
     if(!interaction||interaction.pointerId!==e.pointerId)return
     if(interaction.type==='create'){
+      if(!interaction.moved){setInteraction(null);return}
       const low=Math.min(interaction.start,interaction.current), high=Math.max(interaction.start,interaction.current)
       const start=interaction.moved?low:interaction.start;const end=interaction.moved&&high>low?high:clamp(start+settings.defaultDuration,0,24)
       const block=onCreate({date:toISO(dates[interaction.dateIndex]),start,end,title:'',categoryId:settings.defaultCategoryId,layer});onSelect(block.id,false);onOpen(block.id)
