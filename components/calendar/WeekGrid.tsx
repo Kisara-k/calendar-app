@@ -38,6 +38,17 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
   const [scrollbarWidth,setScrollbarWidth]=useState(0)
   const visibleCats=new Set(categories.filter(c=>c.visible).map(c=>c.id))
   const currentBlocks=blocks.filter(b=>b.layer===layer&&!b.allDay&&visibleCats.has(b.categoryId)&&dates.some(d=>toISO(d)===b.date))
+  const displayBlocks=currentBlocks.map(block=>{
+    if(!interaction?.moved)return block
+    if(interaction.type==='resize'&&interaction.block.id===block.id)return {...block,end:interaction.end}
+    if(interaction.type!=='move')return block
+    const movingGroup=selectedIds.includes(interaction.block.id)&&selectedIds.length>1
+    if(block.id!==interaction.block.id&&(!movingGroup||!selectedIds.includes(block.id)))return block
+    const originalIndex=dates.findIndex(d=>toISO(d)===interaction.block.date),dayDelta=interaction.dateIndex-originalIndex,timeDelta=interaction.start-interaction.block.start,duration=block.end-block.start
+    const start=clamp(block.start+timeDelta,0,24-duration)
+    return {...block,date:toISO(addDays(fromISO(block.date),dayDelta)),start,end:start+duration}
+  })
+  const manipulationGhosts=!interaction?.moved?[]:interaction.type==='resize'?currentBlocks.filter(b=>b.id===interaction.block.id):interaction.type==='move'?currentBlocks.filter(b=>b.id===interaction.block.id||(selectedIds.includes(interaction.block.id)&&selectedIds.length>1&&selectedIds.includes(b.id))):[]
   const ghostBlocks=layer==='actual'?blocks.filter(b=>b.layer==='plan'&&!b.allDay&&visibleCats.has(b.categoryId)&&dates.some(d=>toISO(d)===b.date)):[]
   const allDay=blocks.filter(b=>b.layer===layer&&b.allDay&&visibleCats.has(b.categoryId)&&dates.some(d=>toISO(d)===b.date))
 
@@ -46,9 +57,9 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
 
   const layouts=useMemo(()=>{
     const map=new Map<string,{left:number;width:number}>()
-    dates.forEach(d=>{const date=toISO(d);overlapLayout(currentBlocks.filter(b=>b.date===date)).forEach((v,k)=>map.set(k,v))})
+    dates.forEach(d=>{const date=toISO(d);overlapLayout(displayBlocks.filter(b=>b.date===date)).forEach((v,k)=>map.set(k,v))})
     return map
-  },[currentBlocks,dates])
+  },[displayBlocks,dates])
 
   function point(e:React.PointerEvent){
     const rect=columnsRef.current!.getBoundingClientRect();const width=rect.width/dates.length
@@ -62,8 +73,8 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
     setInteraction({type:'create',pointerId:e.pointerId,originX:e.clientX,originY:e.clientY,dateIndex:p.day,start:p.time,current:p.time,moved:false});onClearSelection()
   }
   function beginEvent(e:React.PointerEvent,kind:'move'|'resize',block:CalendarBlock){
-    if(e.button!==0)return;e.preventDefault();e.stopPropagation();(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-    const p=point(e);onSelect(block.id,e.shiftKey)
+    if(e.button!==0)return;e.preventDefault();e.stopPropagation();columnsRef.current?.setPointerCapture(e.pointerId)
+    const p=point(e);onSelect(block.id,e.shiftKey||e.ctrlKey||e.metaKey)
     if(kind==='move')setInteraction({type:'move',pointerId:e.pointerId,originX:e.clientX,originY:e.clientY,block,offset:p.time-block.start,dateIndex:p.day,start:block.start,moved:false})
     else setInteraction({type:'resize',pointerId:e.pointerId,originX:e.clientX,originY:e.clientY,block,end:block.end,moved:false})
   }
@@ -106,8 +117,9 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
         <div className="week-columns" ref={columnsRef} style={{'--day-count':dates.length} as React.CSSProperties} onPointerDown={beginCreate} onPointerMove={move} onPointerUp={end} onPointerCancel={()=>setInteraction(null)} onPointerLeave={()=>setHoverTime(null)}>
           {dates.map((date,index)=><div className={`time-column ${toISO(date)===toISO(new Date())?'today':''}`} key={toISO(date)}>{Array.from({length:24},(_,h)=><div key={h}><i className="hour-rule" style={{top:h*hourHeight}}/><i className="half-rule" style={{top:(h+.5)*hourHeight}}/></div>)}{(date.getDay()===0||date.getDay()===6)&&<div className="weekend-wash"/>}{<><div className="sleep-wash top" style={{height:settings.wakeHour*hourHeight}}/><div className="sleep-wash bottom" style={{top:settings.sleepHour*hourHeight,height:(24-settings.sleepHour)*hourHeight}}/></>}
             {ghostBlocks.filter(b=>b.date===toISO(date)).map(b=>{const c=categories.find(c=>c.id===b.categoryId)!;return <EventCard key={`g-${b.id}`} block={b} category={c} settings={settings} top={b.start*hourHeight+2} height={(b.end-b.start)*hourHeight-4} left={2} width={96} selected={false} ghost/>})}
-            {currentBlocks.filter(b=>b.date===toISO(date)).map(b=>{const c=categories.find(c=>c.id===b.categoryId)!;const l=layouts.get(b.id)??{left:0,width:100};return <EventCard key={b.id} block={b} category={c} settings={settings} top={b.start*hourHeight+2} height={(b.end-b.start)*hourHeight-4} left={l.left+1} width={l.width-2} selected={selectedIds.includes(b.id)} onPointerDown={beginEvent} onSelect={e=>{if(!e.shiftKey)onOpen(b.id)}} onContextMenu={e=>onEventContext(b.id,e.clientX,e.clientY)}/>})}
-            {live&&live.dateIndex===index&&<div className="event-preview" style={{top:live.start*hourHeight+2,height:Math.max(15,(live.end-live.start)*hourHeight-4),'--event-color':categories.find(c=>c.id===live.categoryId)?.color} as React.CSSProperties}><b>{live.title}</b><span>{formatTime(live.start,settings.timeFormat)} – {formatTime(live.end,settings.timeFormat)}</span></div>}
+            {manipulationGhosts.filter(b=>b.date===toISO(date)).map(b=>{const c=categories.find(c=>c.id===b.categoryId)!;const l=overlapLayout(currentBlocks.filter(x=>x.date===b.date)).get(b.id)??{left:0,width:100};return <EventCard key={`origin-${b.id}`} block={b} category={c} settings={settings} top={b.start*hourHeight+2} height={(b.end-b.start)*hourHeight-4} left={l.left+1} width={l.width-2} selected={false} ghost originGhost/>})}
+            {displayBlocks.filter(b=>b.date===toISO(date)).map(b=>{const c=categories.find(c=>c.id===b.categoryId)!;const l=layouts.get(b.id)??{left:0,width:100};return <EventCard key={b.id} block={b} category={c} settings={settings} top={b.start*hourHeight+2} height={(b.end-b.start)*hourHeight-4} left={l.left+1} width={l.width-2} selected={selectedIds.includes(b.id)} onPointerDown={beginEvent} onSelect={e=>{if(!e.shiftKey&&!e.ctrlKey&&!e.metaKey)onOpen(b.id)}} onContextMenu={e=>onEventContext(b.id,e.clientX,e.clientY)}/>})}
+            {live&&interaction?.type==='create'&&live.dateIndex===index&&<div className="event-preview" style={{top:live.start*hourHeight+2,height:Math.max(15,(live.end-live.start)*hourHeight-4),'--event-color':categories.find(c=>c.id===live.categoryId)?.color} as React.CSSProperties}><b>{live.title}</b><span>{formatTime(live.start,settings.timeFormat)} – {formatTime(live.end,settings.timeFormat)}</span></div>}
           </div>)}
           {nowIndex>=0&&<div className="now-line" style={{top:nowTime*hourHeight,left:`calc(${nowIndex/dates.length*100}% + 1px)`,width:`${100/dates.length}%`}}><span>{formatTime(nowTime,settings.timeFormat)}</span></div>}
           {hoverTime&&!interaction&&<div className="hover-time" style={{top:hoverTime.time*hourHeight,left:`${hoverTime.day/dates.length*100}%`,width:`${100/dates.length}%`}}><span>{formatTime(hoverTime.time,settings.timeFormat)}</span></div>}

@@ -1,0 +1,6 @@
+'use client'
+import { ChevronDown } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import type { CalendarCategory, CalendarGroup } from '@/lib/calendar/types'
+import { GroupedCalendarList } from './GroupedCalendarList'
+export function CalendarSelect({value,calendars,groups,onChange}:{value:string;calendars:CalendarCategory[];groups:CalendarGroup[];onChange:(id:string)=>void}){const [open,setOpen]=useState(false),ref=useRef<HTMLDivElement>(null);useEffect(()=>{if(!open)return;const close=(e:PointerEvent)=>{if(!ref.current?.contains(e.target as Node))setOpen(false)};window.addEventListener('pointerdown',close);return()=>window.removeEventListener('pointerdown',close)},[open]);const selected=calendars.find(c=>c.id===value);return <div className="calendar-select" ref={ref}><button type="button" aria-haspopup="listbox" aria-expanded={open} onClick={()=>setOpen(v=>!v)}><i style={{background:selected?.color}}/><span>{selected?.name??'Choose calendar'}</span><ChevronDown size={12}/></button>{open&&<div className="calendar-select-popover"><GroupedCalendarList groups={groups} calendars={calendars} selectedId={value} onChoose={id=>{onChange(id);setOpen(false)}}/></div>}</div>}
