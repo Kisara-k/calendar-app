@@ -1,18 +1,23 @@
 {
   "version": 2,
   "categories": [
-    { "id": "deep", "name": "Deep work", "color": "#9b87f5", "visible": true },
-    { "id": "meetings", "name": "Meetings", "color": "#53b8d8", "visible": true },
-    { "id": "health", "name": "Health", "color": "#59c799", "visible": true },
-    { "id": "personal", "name": "Personal", "color": "#ef9866", "visible": true },
-    { "id": "learning", "name": "Learning", "color": "#dec05a", "visible": true }
+    { "id": "deep", "name": "Deep work", "color": "#9b87f5", "visible": true, "groupId":"work" },
+    { "id": "meetings", "name": "Meetings", "color": "#53b8d8", "visible": true, "groupId":"work" },
+    { "id": "learning", "name": "Learning", "color": "#dec05a", "visible": true, "groupId":"work" },
+    { "id": "health", "name": "Health", "color": "#59c799", "visible": true, "groupId":"life" },
+    { "id": "personal", "name": "Personal", "color": "#ef9866", "visible": true, "groupId":"life" }
   ],
+  "groups":[{"id":"work","name":"WORK"},{"id":"life","name":"LIFE"}],
+  "quoteBank":["Shape the week before it shapes you.","Make time for what matters.","A calm plan makes room for good work.","Protect your attention; spend it deliberately.","Leave space for the unexpected."],
+  "currentQuote":"Shape the week before it shapes you.",
   "settings": {
     "wakeHour": 6,
     "sleepHour": 23,
     "snapMinutes": 15,
     "defaultDuration": 1,
     "density": "default",
+    "hourScale": 1,
+    "defaultCategoryId":"deep",
     "showWeekends": true,
     "timeFormat": "12h",
     "underlayOpacity": 14

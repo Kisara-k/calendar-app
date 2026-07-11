@@ -1,7 +1,7 @@
 import { BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, Command, Menu, Search, Settings2, Target } from 'lucide-react'
 import type { Layer, Panel, ViewMode } from '@/lib/calendar/types'
 
-type Props={layer:Layer;view:ViewMode;range:string;sidebarOpen:boolean;panel:Panel;onLayer:(v:Layer)=>void;onView:(v:ViewMode)=>void;onToggleSidebar:()=>void;onNavigate:(n:number)=>void;onToday:()=>void;onPanel:(p:Panel)=>void;onCommand:()=>void}
+type Props={layer:Layer;view:ViewMode;range:string;sidebarOpen:boolean;panel:Panel;onLayer:(v:Layer)=>void;onView:(v:ViewMode)=>void;onToggleSidebar:()=>void;onNavigate:(n:number,oneDay?:boolean)=>void;onToday:()=>void;onPanel:(p:Panel)=>void;onCommand:()=>void}
 
 export function AppHeader(p:Props){
   return <header className="app-header">
@@ -9,7 +9,7 @@ export function AppHeader(p:Props){
     <div className="layer-switch" aria-label="Calendar layer"><button className={p.layer==='plan'?'active':''} onClick={()=>p.onLayer('plan')}><Target size={14}/>Plan</button><button className={p.layer==='actual'?'active actual':''} onClick={()=>p.onLayer('actual')}><Check size={14}/>Actual</button></div>
     <div className="header-tools">
       <button className="today-control" onClick={p.onToday}>Today <kbd>T</kbd></button>
-      <span className="nav-pair"><button aria-label="Previous range" onClick={()=>p.onNavigate(-1)}><ChevronLeft size={16}/></button><button aria-label="Next range" onClick={()=>p.onNavigate(1)}><ChevronRight size={16}/></button></span>
+      <span className="nav-pair"><button aria-label="Previous range" title="Shift-click for previous day" onClick={e=>p.onNavigate(-1,e.shiftKey)}><ChevronLeft size={16}/></button><button aria-label="Next range" title="Shift-click for next day" onClick={e=>p.onNavigate(1,e.shiftKey)}><ChevronRight size={16}/></button></span>
       <select className="view-select" value={p.view} onChange={e=>p.onView(e.target.value as ViewMode)} aria-label="Calendar view"><option value="day">Day</option><option value="week">Week</option><option value="month">Month</option></select>
       <span className="header-divider"/>
       <button className={`quiet-icon ${p.panel==='search'?'active':''}`} aria-label="Search" onClick={()=>p.onPanel(p.panel==='search'?null:'search')}><Search size={16}/></button>
