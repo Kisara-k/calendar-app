@@ -70,7 +70,7 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
   function move(e:React.PointerEvent){
     const p=point(e);setHoverTime(p)
     if(!interaction||interaction.pointerId!==e.pointerId)return
-    const moved=interaction.moved||Math.hypot(e.clientX-interaction.originX,e.clientY-interaction.originY)>4
+    const moved=interaction.moved||Math.hypot(e.clientX-interaction.originX,e.clientY-interaction.originY)>6
     if(interaction.type==='create')setInteraction({...interaction,current:p.time,moved})
     if(interaction.type==='move')setInteraction({...interaction,dateIndex:p.day,start:clamp(snapTime(p.time-interaction.offset,settings.snapMinutes),0,24-(interaction.block.end-interaction.block.start)),moved})
     if(interaction.type==='resize')setInteraction({...interaction,end:clamp(p.time,interaction.block.start+settings.snapMinutes/60,24),moved})
@@ -81,7 +81,8 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
     if(interaction.type==='create'){
       if(!interaction.moved){setInteraction(null);return}
       const low=Math.min(interaction.start,interaction.current), high=Math.max(interaction.start,interaction.current)
-      const start=interaction.moved?low:interaction.start;const end=interaction.moved&&high>low?high:clamp(start+settings.defaultDuration,0,24)
+      if(high<=low){setInteraction(null);return}
+      const start=low;const end=high
       const block=onCreate({date:toISO(dates[interaction.dateIndex]),start,end,title:'',categoryId:settings.defaultCategoryId,layer});onSelect(block.id,false);onOpen(block.id)
     }
     if(interaction.type==='move'&&interaction.moved){const duration=interaction.block.end-interaction.block.start;const movingGroup=selectedIds.includes(interaction.block.id)&&selectedIds.length>1;if(movingGroup){const originalIndex=dates.findIndex(d=>toISO(d)===interaction.block.date);const dayDelta=interaction.dateIndex-originalIndex;const timeDelta=interaction.start-interaction.block.start;onUpdateMany(blocks.filter(b=>selectedIds.includes(b.id)).map(b=>{const ownDuration=b.end-b.start;const nextStart=clamp(b.start+timeDelta,0,24-ownDuration);return {...b,date:toISO(addDays(fromISO(b.date),dayDelta)),start:nextStart,end:nextStart+ownDuration}}))}else onUpdate({...interaction.block,date:toISO(dates[interaction.dateIndex]),start:interaction.start,end:interaction.start+duration})}
@@ -89,8 +90,8 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
     setInteraction(null)
   }
   function preview(){
-    if(!interaction)return null
-    if(interaction.type==='create'){const start=Math.min(interaction.start,interaction.current),end=interaction.moved?Math.max(interaction.start,interaction.current):start+settings.defaultDuration;return {dateIndex:interaction.dateIndex,start,end,title:'',categoryId:settings.defaultCategoryId}}
+    if(!interaction||!interaction.moved)return null
+    if(interaction.type==='create'){const start=Math.min(interaction.start,interaction.current),end=Math.max(interaction.start,interaction.current);if(end<=start)return null;return {dateIndex:interaction.dateIndex,start,end,title:'',categoryId:settings.defaultCategoryId}}
     if(interaction.type==='move')return {dateIndex:interaction.dateIndex,start:interaction.start,end:interaction.start+(interaction.block.end-interaction.block.start),title:interaction.block.title,categoryId:interaction.block.categoryId}
     return {dateIndex:dates.findIndex(d=>toISO(d)===interaction.block.date),start:interaction.block.start,end:interaction.end,title:interaction.block.title,categoryId:interaction.block.categoryId}
   }
@@ -113,6 +114,6 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
         </div>
       </div>
     </div>
-    {interaction&&<div className="drag-tooltip">{interaction.type==='move'?`Move to ${DAY_NAMES[interaction.dateIndex]} ${formatTime(interaction.start,settings.timeFormat)}`:interaction.type==='resize'?`${formatTime(interaction.end,settings.timeFormat)} · ${Math.round((interaction.end-interaction.block.start)*60)} min`:`${formatTime(Math.min(interaction.start,interaction.current),settings.timeFormat)} – ${formatTime(Math.max(interaction.start,interaction.current),settings.timeFormat)}`}</div>}
+    {interaction?.moved&&<div className="drag-tooltip">{interaction.type==='move'?`Move to ${DAY_NAMES[interaction.dateIndex]} ${formatTime(interaction.start,settings.timeFormat)}`:interaction.type==='resize'?`${formatTime(interaction.end,settings.timeFormat)} · ${Math.round((interaction.end-interaction.block.start)*60)} min`:`${formatTime(Math.min(interaction.start,interaction.current),settings.timeFormat)} – ${formatTime(Math.max(interaction.start,interaction.current),settings.timeFormat)}`}</div>}
   </div>
 }

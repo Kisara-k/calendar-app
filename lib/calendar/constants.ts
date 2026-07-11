@@ -1,4 +1,4 @@
 export const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 export const LONG_DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
-export const CATEGORY_COLORS = ['#7986cb','#33b679','#8e24aa','#e67c73','#f6bf26','#f4511e','#039be5','#616161','#3f51b5','#0b8043','#d50000','#b39ddb','#81d4fa','#80cbc4','#c5e1a5','#fff176','#ffb74d','#ff8a65','#a1887f','#90a4ae','#7da3e8','#9b87f5','#ef9866','#dec05a']
+export const CATEGORY_COLORS = ['#D50000','#E67C73','#F6AEA9','#F4511E','#FF8A65','#FBC4AB','#F6BF26','#FDD663','#FFF2A8','#0B8043','#33B679','#81C995','#00796B','#46BDC6','#80CBC4','#039BE5','#4FC3F7','#81D4FA','#3F51B5','#7986CB','#AECBFA','#8E24AA','#B39DDB','#D7AEFB']

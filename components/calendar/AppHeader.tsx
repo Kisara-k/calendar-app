@@ -1,22 +1,18 @@
-import { BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, Command, Menu, Search, Settings2, Target } from 'lucide-react'
+'use client'
+import { BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, Command, Menu, MoreHorizontal, Search, Settings2, Target, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import type { Layer, Panel, ViewMode } from '@/lib/calendar/types'
 
-type Props={layer:Layer;view:ViewMode;range:string;sidebarOpen:boolean;panel:Panel;onLayer:(v:Layer)=>void;onView:(v:ViewMode)=>void;onToggleSidebar:()=>void;onNavigate:(n:number,oneDay?:boolean)=>void;onToday:()=>void;onPanel:(p:Panel)=>void;onCommand:()=>void}
+type Props={layer:Layer;view:ViewMode;range:string;sidebarOpen:boolean;panel:Panel;planLabel:string;actualLabel:string;onLayer:(v:Layer)=>void;onRenameLayer:(layer:Layer,name:string)=>void;onView:(v:ViewMode)=>void;onToggleSidebar:()=>void;onNavigate:(n:number,oneDay?:boolean)=>void;onToday:()=>void;onPanel:(p:Panel)=>void;onCommand:()=>void}
 
 export function AppHeader(p:Props){
+  const [menu,setMenu]=useState<Layer|null>(null),[name,setName]=useState('');const menuRef=useRef<HTMLDivElement>(null)
+  useEffect(()=>{if(!menu)return;setName(menu==='plan'?p.planLabel:p.actualLabel);const close=(e:PointerEvent)=>{if(!menuRef.current?.contains(e.target as Node))setMenu(null)};window.addEventListener('pointerdown',close);return()=>window.removeEventListener('pointerdown',close)},[menu,p.planLabel,p.actualLabel])
+  const openMenu=(layer:Layer,e:React.MouseEvent)=>{e.stopPropagation();setMenu(layer)}
+  const commit=()=>{if(menu&&name.trim())p.onRenameLayer(menu,name);setMenu(null)}
   return <header className="app-header">
     <div className="header-left"><button className="quiet-icon" aria-label="Toggle sidebar" onClick={p.onToggleSidebar}><Menu size={17}/></button><div className="notion-mark"><CalendarDays size={16}/></div><b className="product-name">Tempo</b><span className="header-range">{p.range}</span></div>
-    <div className="layer-switch" aria-label="Calendar layer"><button className={p.layer==='plan'?'active':''} onClick={()=>p.onLayer('plan')}><Target size={14}/>Plan</button><button className={p.layer==='actual'?'active actual':''} onClick={()=>p.onLayer('actual')}><Check size={14}/>Actual</button></div>
-    <div className="header-tools">
-      <button className="today-control" onClick={p.onToday}>Today <kbd>T</kbd></button>
-      <span className="nav-pair"><button aria-label="Previous range" title="Shift-click for previous day" onClick={e=>p.onNavigate(-1,e.shiftKey)}><ChevronLeft size={16}/></button><button aria-label="Next range" title="Shift-click for next day" onClick={e=>p.onNavigate(1,e.shiftKey)}><ChevronRight size={16}/></button></span>
-      <select className="view-select" value={p.view} onChange={e=>p.onView(e.target.value as ViewMode)} aria-label="Calendar view"><option value="day">Day</option><option value="week">Week</option><option value="month">Month</option></select>
-      <span className="header-divider"/>
-      <button className={`quiet-icon ${p.panel==='search'?'active':''}`} aria-label="Search" onClick={()=>p.onPanel(p.panel==='search'?null:'search')}><Search size={16}/></button>
-      <button className="command-trigger" aria-label="Open command menu" onClick={p.onCommand}><Command size={15}/><span>Command</span><kbd>⌘K</kbd></button>
-      <button className={`quiet-icon ${p.panel==='insights'?'active':''}`} aria-label="Toggle insights" onClick={()=>p.onPanel(p.panel==='insights'?null:'insights')}><BarChart3 size={16}/></button>
-      <button className={`quiet-icon ${p.panel==='settings'?'active':''}`} aria-label="Open settings" onClick={()=>p.onPanel(p.panel==='settings'?null:'settings')}><Settings2 size={16}/></button>
-      <div className="profile-dot">TK</div>
-    </div>
+    <div className="layer-switch" aria-label="Calendar layer"><div className={p.layer==='plan'?'active':''}><button onClick={()=>p.onLayer('plan')}><Target size={14}/>{p.planLabel}</button><button aria-label={`Options for ${p.planLabel}`} onClick={e=>openMenu('plan',e)}><MoreHorizontal size={12}/></button></div><div className={p.layer==='actual'?'active actual':''}><button onClick={()=>p.onLayer('actual')}><Check size={14}/>{p.actualLabel}</button><button aria-label={`Options for ${p.actualLabel}`} onClick={e=>openMenu('actual',e)}><MoreHorizontal size={12}/></button></div>{menu&&<div ref={menuRef} className="layer-menu"><header><b>Rename tab</b><button onClick={()=>setMenu(null)}><X size={12}/></button></header><input autoFocus value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')commit();if(e.key==='Escape')setMenu(null)}}/><button onClick={commit}>Done</button></div>}</div>
+    <div className="header-tools"><button className="today-control" onClick={p.onToday}>Today <kbd>T</kbd></button><span className="nav-pair"><button aria-label="Previous range" title="Shift-click for previous day" onClick={e=>p.onNavigate(-1,e.shiftKey)}><ChevronLeft size={16}/></button><button aria-label="Next range" title="Shift-click for next day" onClick={e=>p.onNavigate(1,e.shiftKey)}><ChevronRight size={16}/></button></span><select className="view-select" value={p.view} onChange={e=>p.onView(e.target.value as ViewMode)} aria-label="Calendar view"><option value="day">Day</option><option value="week">Week</option><option value="month">Month</option></select><span className="header-divider"/><button className={`quiet-icon ${p.panel==='search'?'active':''}`} aria-label="Search" onClick={()=>p.onPanel(p.panel==='search'?null:'search')}><Search size={16}/></button><button className="command-trigger" aria-label="Open command menu" onClick={p.onCommand}><Command size={15}/><span>Command</span><kbd>⌘K</kbd></button><button className={`quiet-icon ${p.panel==='insights'?'active':''}`} aria-label="Toggle insights" onClick={()=>p.onPanel(p.panel==='insights'?null:'insights')}><BarChart3 size={16}/></button><button className={`quiet-icon ${p.panel==='settings'?'active':''}`} aria-label="Open settings" onClick={()=>p.onPanel(p.panel==='settings'?null:'settings')}><Settings2 size={16}/></button><div className="profile-dot">TK</div></div>
   </header>
 }
