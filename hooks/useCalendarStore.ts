@@ -1,13 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { INITIAL_DATA } from '@/lib/calendar/constants'
+import { loadDemoCalendar } from '@/lib/calendar/seed'
 import type { CalendarBlock, CalendarData, CalendarSettings, Layer } from '@/lib/calendar/types'
 
 const STORAGE_KEY='tempo-calendar-v2'
 
 export function useCalendarStore() {
-  const [data,setData]=useState<CalendarData>(INITIAL_DATA)
+  const [data,setData]=useState<CalendarData>(()=>loadDemoCalendar())
   const [ready,setReady]=useState(false)
   const [undo,setUndo]=useState<{blocks:CalendarBlock[];label:string}|null>(null)
 
@@ -45,7 +45,7 @@ export function useCalendarStore() {
     })
     return count
   },[])
-  const reset=useCallback(()=>setData(INITIAL_DATA),[])
+  const reset=useCallback(()=>setData(loadDemoCalendar()),[])
   const replaceData=useCallback((next:CalendarData)=>{if(next.version!==2||!Array.isArray(next.blocks)||!Array.isArray(next.categories))throw new Error('Unsupported calendar file');setData(next)},[])
 
   return useMemo(()=>({data,ready,undo,setUndo,createBlock,updateBlock,updateBlocks,deleteBlocks,undoDelete,patchSettings,toggleCategory,copyPlanToActual,reset,replaceData}),[data,ready,undo,createBlock,updateBlock,updateBlocks,deleteBlocks,undoDelete,patchSettings,toggleCategory,copyPlanToActual,reset,replaceData])

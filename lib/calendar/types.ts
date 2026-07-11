@@ -1,6 +1,7 @@
 export type Layer = 'plan' | 'actual'
 export type ViewMode = 'day' | 'week' | 'month'
 export type Panel = 'event' | 'insights' | 'settings' | 'search' | 'shortcuts' | null
+export type UtilityPanel = Exclude<Panel, 'event'>
 export type ActualStatus = 'completed' | 'partial' | 'skipped' | 'unplanned'
 
 export type CalendarCategory = {
