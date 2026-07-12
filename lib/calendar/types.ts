@@ -44,6 +44,8 @@ export type CalendarSettings = {
   planLabel?: string
   actualLabel?: string
   autoFormatTitles?: boolean
+  userFirstName?: string
+  userLastName?: string
 }
 
 export type CalendarData = {
