@@ -43,6 +43,7 @@ export type CalendarSettings = {
   underlayOpacity: number
   planLabel?: string
   actualLabel?: string
+  autoFormatTitles?: boolean
 }
 
 export type CalendarData = {

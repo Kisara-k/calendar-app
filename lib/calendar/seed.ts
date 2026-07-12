@@ -11,7 +11,7 @@ function isCalendarData(value: unknown): value is CalendarData {
 
 export function normalizeCalendarData(value: CalendarData): CalendarData {
   const categories=value.categories.map(c=>({...c,groupId:c.groupId??(['health','personal'].includes(c.id)?'life':'work')}))
-  return {...value,categories,groups:value.groups?.length?value.groups:[{id:'work',name:'WORK'},{id:'life',name:'LIFE'}],quoteBank:value.quoteBank?.length?value.quoteBank:['Shape the week before it shapes you.'],currentQuote:value.currentQuote??'Shape the week before it shapes you.',deletedCalendars:value.deletedCalendars??[],settings:{...value.settings,hourScale:value.settings.hourScale??1,planLabel:value.settings.planLabel??'Plan',actualLabel:value.settings.actualLabel??'Actual',defaultCategoryId:value.settings.defaultCategoryId&&categories.some(c=>c.id===value.settings.defaultCategoryId)?value.settings.defaultCategoryId:categories[0]?.id??''}}
+  return {...value,categories,groups:value.groups?.length?value.groups:[{id:'work',name:'WORK'},{id:'life',name:'LIFE'}],quoteBank:value.quoteBank?.length?value.quoteBank:['Shape the week before it shapes you.'],currentQuote:value.currentQuote??'Shape the week before it shapes you.',deletedCalendars:value.deletedCalendars??[],settings:{...value.settings,hourScale:value.settings.hourScale??1,planLabel:value.settings.planLabel??'Plan',actualLabel:value.settings.actualLabel??'Actual',autoFormatTitles:value.settings.autoFormatTitles??false,defaultCategoryId:value.settings.defaultCategoryId&&categories.some(c=>c.id===value.settings.defaultCategoryId)?value.settings.defaultCategoryId:categories[0]?.id??''}}
 }
 
 export function loadDemoCalendar(): CalendarData {
