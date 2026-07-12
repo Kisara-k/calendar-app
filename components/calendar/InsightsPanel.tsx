@@ -1,25 +1,98 @@
+'use client'
+import { useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { BarChart3, CircleGauge, Clock3, X } from 'lucide-react'
-import { toISO } from '@/lib/calendar/date'
-import type { CalendarBlock, CalendarCategory, CalendarSettings, Layer } from '@/lib/calendar/types'
+import { formatTime, fromISO, toISO } from '@/lib/calendar/date'
+import type { CalendarBlock, CalendarCategory, CalendarGroup, CalendarSettings, Layer } from '@/lib/calendar/types'
 
-type Props={blocks:CalendarBlock[];categories:CalendarCategory[];settings:CalendarSettings;dates:Date[];layer:Layer;onClose?:()=>void}
+type TipLine={text:string;hi?:boolean;mid?:string;right?:string}
+type TipData={title?:string;timeRight?:string;color?:string;lines:TipLine[]}
+type Tip=TipData&{below:boolean;cx:number;anchorTop:number;anchorBottom:number}
+type TipPos={cx:number;top:number;arrowPct:number;below:boolean}
+
+type Props={blocks:CalendarBlock[];categories:CalendarCategory[];groups:CalendarGroup[];settings:CalendarSettings;dates:Date[];layer:Layer;onClose?:()=>void}
 
 function uniqueHours(blocks:CalendarBlock[],settings:CalendarSettings){
   const byDate=new Map<string,[number,number][]>();blocks.forEach(b=>{const start=Math.max(settings.wakeHour,b.start),end=Math.min(settings.sleepHour,b.end);if(end>start)byDate.set(b.date,[...(byDate.get(b.date)??[]),[start,end]])})
   let total=0;byDate.forEach(ranges=>{ranges.sort((a,b)=>a[0]-b[0]);let [s,e]=ranges[0]??[0,0];for(const [ns,ne] of ranges.slice(1)){if(ns<=e)e=Math.max(e,ne);else{total+=e-s;s=ns;e=ne}}total+=e-s});return total
 }
 
-export function InsightsPanel({blocks,categories,settings,dates,layer,onClose}:Props){
+function fmtDate(iso:string){const d=fromISO(iso);return d.toLocaleDateString('en',{weekday:'short',month:'short',day:'numeric'})}
+function fmtDur(h:number){const m=Math.round(h*60);return m<60?`${m} min`:`${+(h.toFixed(1))} h`}
+function fmtH(h:number){const m=Math.round(h*60);return m<60?`${m}m`:`${+(h.toFixed(1))}h`}
+function polar(cx:number,cy:number,r:number,deg:number):[number,number]{const a=(deg-90)*Math.PI/180;return[cx+r*Math.cos(a),cy+r*Math.sin(a)]}
+function sectorArc(cx:number,cy:number,r:number,inner:number,s:number,e:number){if(e-s<0.5)return '';const[x1,y1]=polar(cx,cy,r,s),[x2,y2]=polar(cx,cy,r,e),[x3,y3]=polar(cx,cy,inner,e),[x4,y4]=polar(cx,cy,inner,s);const la=e-s>180?1:0;return `M${x1},${y1}A${r},${r},0,${la},1,${x2},${y2}L${x3},${y3}A${inner},${inner},0,${la},0,${x4},${y4}Z`}
+
+export function InsightsPanel({blocks,categories,groups,settings,dates,layer,onClose}:Props){
+  const [tip,setTip]=useState<Tip|null>(null)
+  const [tipPos,setTipPos]=useState<TipPos|null>(null)
+  const tipRef=useRef<HTMLDivElement|null>(null)
+  const asideRef=useRef<HTMLElement|null>(null)
+  const hideTimer=useRef<ReturnType<typeof setTimeout>|null>(null)
+
+  useLayoutEffect(()=>{
+    if(!tip||!tipRef.current){setTipPos(null);return}
+    const w=tipRef.current.offsetWidth,h=tipRef.current.offsetHeight
+    const rightBound=asideRef.current?.getBoundingClientRect().right??window.innerWidth
+    const cx=Math.min(rightBound-w/2-8,Math.max(w/2+8,tip.cx))
+    const arrowPct=Math.min(92,Math.max(8,(tip.cx-cx+w/2)/w*100))
+    const spaceBelow=window.innerHeight-(tip.anchorBottom+10)
+    const below=spaceBelow>=h+4
+    const top=below?tip.anchorBottom+10:tip.anchorTop-10
+    setTipPos({cx,top,arrowPct,below})
+  },[tip])
+
+  function makeTip(rect:{left:number;right:number;top:number;bottom:number;width:number;height:number},data:TipData){
+    if(hideTimer.current)clearTimeout(hideTimer.current)
+    setTipPos(null)
+    setTip({...data,below:true,cx:rect.left+rect.width/2,anchorTop:rect.top,anchorBottom:rect.bottom})
+  }
+  function showTip(e:React.MouseEvent,data:TipData){const r=(e.currentTarget as Element).getBoundingClientRect();makeTip(r,data)}
+  const hideTip=()=>{hideTimer.current=setTimeout(()=>setTip(null),500)}
+  const cancelHide=()=>{if(hideTimer.current)clearTimeout(hideTimer.current)}
+
   const dateSet=new Set(dates.map(toISO));const scoped=blocks.filter(b=>b.layer===layer&&dateSet.has(b.date)&&!b.allDay);const plan=blocks.filter(b=>b.layer==='plan'&&dateSet.has(b.date)&&!b.allDay);const actual=blocks.filter(b=>b.layer==='actual'&&dateSet.has(b.date)&&!b.allDay)
   const allocated=uniqueHours(scoped,settings),available=(settings.sleepHour-settings.wakeHour)*dates.length,unallocated=Math.max(0,available-allocated)
   const perCategory=categories.map(c=>({c,plan:uniqueHours(plan.filter(b=>b.categoryId===c.id),settings),actual:uniqueHours(actual.filter(b=>b.categoryId===c.id),settings)}))
-  const max=Math.max(1,...perCategory.map(x=>layer==='plan'?x.plan:x.actual))
-  const ringValues=perCategory.map(x=>({color:x.c.color,value:layer==='plan'?x.plan:x.actual})).filter(x=>x.value>0),categoryTotal=ringValues.reduce((sum,x)=>sum+x.value,0),ringScale=categoryTotal?allocated/categoryTotal:0;let cursor=0;const ringStops=ringValues.map(x=>{const start=cursor/available*100;cursor+=x.value*ringScale;return `${x.color} ${start}% ${Math.min(100,cursor/available*100)}%`});const ringGradient=`conic-gradient(${[...ringStops,`#2a2b2f ${Math.min(100,allocated/available*100)}% 100%`].join(',')})`
-  return <aside className="context-panel insights-panel"><div className="panel-head"><span><BarChart3 size={15}/>Weekly insights</span>{onClose&&<button className="quiet-icon" aria-label="Close insights" onClick={onClose}><X size={16}/></button>}</div><div className="insights-body">
-    <div className="allocation-hero"><div className="allocation-ring segmented" style={{background:ringGradient}}><span><b>{allocated.toFixed(1)}h</b><small>blocked</small></span></div><div><strong>{Math.round(allocated/available*100)}%</strong><span>of waking hours</span><small>{unallocated.toFixed(1)}h unallocated</small></div></div>
+  const catVal=(x:{plan:number;actual:number})=>layer==='plan'?x.plan:x.actual
+  const max=Math.max(1,...perCategory.map(catVal))
+
+  // Build grouped sections for by-calendar display
+  const groupedSections:{label:string|null;cats:typeof perCategory}[]=[]
+  if(groups.length>0){for(const g of groups){const cats=perCategory.filter(x=>x.c.groupId===g.id);if(cats.length)groupedSections.push({label:g.name,cats})};const ungrouped=perCategory.filter(x=>!x.c.groupId);if(ungrouped.length)groupedSections.push({label:'Other',cats:ungrouped})}else{groupedSections.push({label:null,cats:perCategory})}
+  const showGroupLabels=groupedSections.length>1
+
+  const ringValues=perCategory.map(x=>({color:x.c.color,value:catVal(x),cat:x.c})).filter(x=>x.value>0)
+  const categoryTotal=ringValues.reduce((a,x)=>a+x.value,0),ringScale=categoryTotal?allocated/categoryTotal:0
+  let rCursor=0
+  const ringSegs=ringValues.map(x=>{const startDeg=rCursor/available*360;rCursor+=x.value*ringScale;const endDeg=rCursor/available*360;return {...x,startDeg,endDeg}})
+  const ringGradient=`conic-gradient(${[...ringSegs.map(x=>`${x.color} ${x.startDeg/360*100}% ${Math.min(100,x.endDeg/360*100)}%`),`#2a2b2f ${Math.min(100,allocated/available*100)}% 100%`].join(',')})`
+
+  function renderAllocRow(c:CalendarCategory,plan:number,actual:number){
+    const value=catVal({plan,actual}),events=scoped.filter(b=>b.categoryId===c.id).sort((a,b)=>a.date.localeCompare(b.date)||a.start-b.start),durationTotal=events.reduce((sum,b)=>sum+b.end-b.start,0)
+    return <div className="allocation-row" key={c.id}><div><span><i style={{background:c.color}}/>{c.name}</span><span className="allocation-values">{layer==='actual'&&<small className={actual>=plan?'positive':''}>{actual-plan>=0?'+':''}{(actual-plan).toFixed(1)}h vs plan</small>}<b>{value.toFixed(1)}h</b></span></div><div className="allocation-track"><span className="allocation-fill" style={{width:`${value/max*100}%`}}>{events.map(b=><i key={b.id} style={{background:c.color,width:`${(b.end-b.start)/Math.max(durationTotal,.01)*100}%`,cursor:'default'}} onMouseEnter={e=>showTip(e,{title:b.title||'Untitled',timeRight:fmtDur(b.end-b.start),color:c.color,lines:[{text:fmtDate(b.date)},{text:formatTime(b.start,settings.timeFormat)},...(b.notes?.trim()?[{text:b.notes.trim()}]:[])]})} onMouseLeave={hideTip}/>)}</span></div></div>
+  }
+
+  return <aside ref={asideRef as React.RefObject<HTMLElement>} className="context-panel insights-panel"><div className="panel-head"><span><BarChart3 size={15}/>Weekly insights</span>{onClose&&<button className="quiet-icon" aria-label="Close insights" onClick={onClose}><X size={16}/></button>}</div><div className="insights-body">
+    <div className="allocation-hero">
+      <div className="allocation-ring segmented" style={{background:ringGradient}}>
+        <span style={{zIndex:1,position:'relative'}}><b>{allocated.toFixed(1)}h</b><small>blocked</small></span>
+        <svg style={{position:'absolute',inset:0,borderRadius:'50%',zIndex:2,overflow:'visible'}} viewBox="0 0 68 68">
+          {ringSegs.map((x,i)=>{const dayLines:TipLine[]=dates.flatMap(d=>{const iso=toISO(d);const catEvts=scoped.filter(b=>b.categoryId===x.cat.id&&b.date===iso).sort((a,b)=>a.start-b.start);if(!catEvts.length)return [];return [{text:fmtDate(iso)},...catEvts.map(b=>({text:b.title||'Untitled',hi:true,mid:formatTime(b.start,settings.timeFormat),right:fmtH(b.end-b.start)}))]});return <path key={i} d={sectorArc(34,34,34,28,x.startDeg,x.endDeg)} fill="transparent" style={{pointerEvents:'all',cursor:'default'}} onMouseEnter={e=>{const r=(e.currentTarget as SVGPathElement).getBoundingClientRect();makeTip(r,{title:x.cat.name,timeRight:`${x.value.toFixed(1)} h`,color:x.color,lines:dayLines})}} onMouseLeave={hideTip}/>})}
+        </svg>
+      </div>
+      <div><strong>{Math.round(allocated/available*100)}%</strong><span>of waking hours</span><small>{unallocated.toFixed(1)}h unallocated</small></div>
+    </div>
     <div className="insight-metrics"><div><Clock3 size={15}/><span><b>{scoped.length}</b> blocks</span></div><div><CircleGauge size={15}/><span><b>{scoped.filter(b=>b.end-b.start<1).length}</b> short</span></div></div>
-    <section className="insight-section"><header><h3>By calendar</h3><span>{layer==='plan'?'Plan':'Actual vs plan'}</span></header>{perCategory.map(({c,plan,actual})=>{const value=layer==='plan'?plan:actual,events=scoped.filter(b=>b.categoryId===c.id).sort((a,b)=>a.date.localeCompare(b.date)||a.start-b.start),durationTotal=events.reduce((sum,b)=>sum+b.end-b.start,0);return <div className="allocation-row" key={c.id}><div><span><i style={{background:c.color}}/>{c.name}</span><span className="allocation-values">{layer==='actual'&&<small className={actual>=plan?'positive':''}>{actual-plan>=0?'+':''}{(actual-plan).toFixed(1)}h vs plan</small>}<b>{value.toFixed(1)}h</b></span></div><div className="allocation-track"><span className="allocation-fill" style={{width:`${value/max*100}%`}}>{events.map(b=><i key={b.id} style={{background:c.color,width:`${(b.end-b.start)/Math.max(durationTotal,.01)*100}%`}} title={b.title}/>)}</span></div></div>})}</section>
-    <section className="insight-section"><header><h3>Daily load</h3><span>unique hours</span></header><div className="daily-bars stacked">{dates.map(d=>{const dayBlocks=scoped.filter(b=>b.date===toISO(d)),parts=categories.map(c=>({c,value:uniqueHours(dayBlocks.filter(b=>b.categoryId===c.id),settings)})).filter(x=>x.value>0),total=parts.reduce((sum,x)=>sum+x.value,0);return <div key={toISO(d)}><span><span className="stacked-column" style={{height:`${Math.max(3,total/(settings.sleepHour-settings.wakeHour)*100)}%`}}>{parts.map(x=><i key={x.c.id} style={{background:x.c.color,height:`${x.value/Math.max(total,.01)*100}%`}} title={`${x.c.name}: ${x.value.toFixed(1)}h`}/>)}</span></span><small>{d.toLocaleString('en',{weekday:'narrow'})}</small></div>})}</div></section>
-    <div className="insight-note"><b>{unallocated>available*.45?'Plenty of breathing room':'A full week'}</b><p>{unallocated.toFixed(1)} hours remain open between your configured wake and sleep times. Overlapping blocks are counted once.</p></div>
-  </div></aside>
+    <section className="insight-section insight-by-cal">
+      <header><h3>By calendar</h3><span>{layer==='plan'?'Plan':'Actual vs plan'}</span></header>
+      {groupedSections.map((section)=><div key={section.label??'__all__'}>{showGroupLabels&&<div className="insight-group-label">{section.label}<i/></div>}{section.cats.map(({c,plan,actual})=>renderAllocRow(c,plan,actual))}</div>)}
+    </section>
+    <div className="insights-bottom">
+      <section className="insight-section"><header><h3>Daily load</h3><span>unique hours</span></header><div className="daily-bars stacked">{dates.map(d=>{const iso=toISO(d);const dayBlocks=scoped.filter(b=>b.date===iso),parts=categories.map(c=>({c,value:uniqueHours(dayBlocks.filter(b=>b.categoryId===c.id),settings)})).filter(x=>x.value>0),total=parts.reduce((s,x)=>s+x.value,0);const dayLabel=d.toLocaleDateString('en',{weekday:'short',month:'short',day:'numeric'});return <div key={iso}><span><span className="stacked-column" style={{height:`${Math.max(3,total/(settings.sleepHour-settings.wakeHour)*100)}%`}}>{parts.map(x=>{const catEvents=scoped.filter(b=>b.categoryId===x.c.id&&b.date===iso).sort((a,b)=>a.start-b.start);const lines:TipLine[]=[{text:dayLabel},...catEvents.map(b=>({text:b.title||'Untitled',hi:true,mid:formatTime(b.start,settings.timeFormat),right:fmtH(b.end-b.start)}))];return <i key={x.c.id} style={{background:x.c.color,height:`${x.value/Math.max(total,.01)*100}%`,cursor:'default'}} onMouseEnter={e=>showTip(e,{title:x.c.name,timeRight:`${x.value.toFixed(1)} h`,color:x.c.color,lines})} onMouseLeave={hideTip}/>})}</span></span><small>{d.toLocaleString('en',{weekday:'narrow'})}</small></div>})}</div></section>
+      <div className="insight-note"><b>{unallocated>available*.45?'Plenty of breathing room':'A full week'}</b><p>{unallocated.toFixed(1)} hours remain open between your configured wake and sleep times. Overlapping blocks are counted once.</p></div>
+    </div>
+  </div>
+  {tip&&createPortal(<div ref={tipRef} className={`insights-tip ${(tipPos?.below??true)?'tip-below':'tip-above'}${tipPos?'':' tip-placing'}`} style={{left:tipPos?.cx??tip.cx,top:tipPos?.top??(tip.anchorBottom+10),'--tip-color':tip.color??'#e0e1e3','--arrow-x':`${tipPos?.arrowPct??50}%`} as React.CSSProperties} onMouseEnter={cancelHide} onMouseLeave={hideTip}>{tip.title&&<div className="tip-head"><b>{tip.title}</b>{tip.timeRight&&<span className="tip-right">{tip.timeRight}</span>}</div>}{tip.lines.map((l,i)=><span key={i} className="tip-line"><span className="tip-left"><span className={l.hi?'tip-hi':''}>{l.text}</span>{l.mid&&<span className="tip-mid"> {l.mid}</span>}</span>{l.right&&<span className="tip-lr">{l.right}</span>}</span>)}</div>,document.body)}
+  </aside>
 }

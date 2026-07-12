@@ -11,8 +11,9 @@ type Interaction =
   | {type:'create';pointerId:number;originX:number;originY:number;dateIndex:number;start:number;current:number;moved:boolean}
   | {type:'move';pointerId:number;originX:number;originY:number;block:CalendarBlock;offset:number;dateIndex:number;start:number;moved:boolean;openOnRelease:boolean}
   | {type:'resize';pointerId:number;originX:number;originY:number;block:CalendarBlock;end:number;moved:boolean}
+  | {type:'select';pointerId:number;originX:number;originY:number;x1:number;y1:number;x2:number;y2:number;moved:boolean}
 
-type Props={dates:Date[];blocks:CalendarBlock[];categories:CalendarCategory[];settings:CalendarSettings;layer:Layer;selectedIds:string[];onSelect:(id:string,additive:boolean)=>void;onClearSelection:()=>void;onCreate:(b:Omit<CalendarBlock,'id'>)=>CalendarBlock;onUpdate:(b:CalendarBlock)=>void;onUpdateMany:(b:CalendarBlock[])=>void;onOpen:(id:string)=>void;onEventContext:(id:string,x:number,y:number)=>void}
+type Props={dates:Date[];blocks:CalendarBlock[];categories:CalendarCategory[];settings:CalendarSettings;layer:Layer;selectedIds:string[];onSelect:(id:string,additive:boolean)=>void;onSelectMany:(ids:string[])=>void;onClearSelection:()=>void;onCreate:(b:Omit<CalendarBlock,'id'>)=>CalendarBlock;onUpdate:(b:CalendarBlock)=>void;onUpdateMany:(b:CalendarBlock[])=>void;onOpen:(id:string)=>void;onEventContext:(id:string,x:number,y:number)=>void}
 
 const clamp=(n:number,min:number,max:number)=>Math.max(min,Math.min(max,n))
 
@@ -29,11 +30,12 @@ function overlapLayout(blocks:CalendarBlock[],categoryOrder:Map<string,number>){
   return result
 }
 
-export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onSelect,onClearSelection,onCreate,onUpdate,onUpdateMany,onOpen,onEventContext}:Props){
+export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onSelect,onSelectMany,onClearSelection,onCreate,onUpdate,onUpdateMany,onOpen,onEventContext}:Props){
   const hourHeight=60*(settings.hourScale??1)
   const scrollRef=useRef<HTMLDivElement>(null)
   const columnsRef=useRef<HTMLDivElement>(null)
   const [interaction,setInteraction]=useState<Interaction|null>(null)
+  const [tentativeIds,setTentativeIds]=useState<string[]>([])
   const [hoverTime,setHoverTime]=useState<{day:number;time:number}|null>(null)
   const [scrollbarWidth,setScrollbarWidth]=useState(0)
   const visibleCats=new Set(categories.filter(c=>c.visible).map(c=>c.id))
@@ -70,18 +72,24 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
   }
   function beginCreate(e:React.PointerEvent){
     if(e.button!==0||!columnsRef.current)return
+    if(e.ctrlKey||e.metaKey){(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);setInteraction({type:'select',pointerId:e.pointerId,originX:e.clientX,originY:e.clientY,x1:e.clientX,y1:e.clientY,x2:e.clientX,y2:e.clientY,moved:false});return}
     const p=point(e);(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
     setInteraction({type:'create',pointerId:e.pointerId,originX:e.clientX,originY:e.clientY,dateIndex:p.day,start:p.time,current:p.time,moved:false});onClearSelection()
   }
   function beginEvent(e:React.PointerEvent,kind:'move'|'resize',block:CalendarBlock){
     if(e.button!==0)return;e.preventDefault();e.stopPropagation();columnsRef.current?.setPointerCapture(e.pointerId)
-    const p=point(e);if(kind==='resize')onClearSelection();else if(e.shiftKey||e.ctrlKey||e.metaKey)onSelect(block.id,true)
-    if(kind==='move')setInteraction({type:'move',pointerId:e.pointerId,originX:e.clientX,originY:e.clientY,block,offset:p.time-block.start,dateIndex:p.day,start:block.start,moved:false,openOnRelease:!e.shiftKey&&!e.ctrlKey&&!e.metaKey})
+    const p=point(e)
+    if(kind==='resize')onClearSelection()
+    else if(e.shiftKey||e.ctrlKey||e.metaKey)onSelect(block.id,true)
+    else if(!selectedIds.includes(block.id))onSelect(block.id,false)
+    const inMultiSelection=selectedIds.includes(block.id)&&selectedIds.length>1
+    if(kind==='move')setInteraction({type:'move',pointerId:e.pointerId,originX:e.clientX,originY:e.clientY,block,offset:p.time-block.start,dateIndex:p.day,start:block.start,moved:false,openOnRelease:!e.shiftKey&&!e.ctrlKey&&!e.metaKey&&!inMultiSelection})
     else setInteraction({type:'resize',pointerId:e.pointerId,originX:e.clientX,originY:e.clientY,block,end:block.end,moved:false})
   }
   function move(e:React.PointerEvent){
     const p=point(e);setHoverTime(p)
     if(!interaction||interaction.pointerId!==e.pointerId)return
+    if(interaction.type==='select'){const moved=interaction.moved||Math.hypot(e.clientX-interaction.originX,e.clientY-interaction.originY)>6;setInteraction({...interaction,x2:e.clientX,y2:e.clientY,moved});if(moved&&columnsRef.current){const selL=Math.min(interaction.x1,e.clientX),selR=Math.max(interaction.x1,e.clientX),selT=Math.min(interaction.y1,e.clientY),selB=Math.max(interaction.y1,e.clientY);const hitIds:string[]=[];columnsRef.current.querySelectorAll('[data-block-id]').forEach(el=>{const r=el.getBoundingClientRect();if(r.left<selR&&r.right>selL&&r.top<selB&&r.bottom>selT){const id=el.getAttribute('data-block-id');if(id)hitIds.push(id)}});setTentativeIds(hitIds)}return}
     const moved=interaction.moved||Math.hypot(e.clientX-interaction.originX,e.clientY-interaction.originY)>6
     if(interaction.type==='create')setInteraction({...interaction,current:p.time,moved})
     if(interaction.type==='move')setInteraction({...interaction,dateIndex:p.day,start:clamp(snapTime(p.time-interaction.offset,settings.snapMinutes),0,24-(interaction.block.end-interaction.block.start)),moved})
@@ -90,6 +98,11 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
   }
   function end(e:React.PointerEvent){
     if(!interaction||interaction.pointerId!==e.pointerId)return
+    if(interaction.type==='select'){
+      const finalIds=[...tentativeIds];setTentativeIds([])
+      if(interaction.moved){if(finalIds.length)onSelectMany(finalIds);else onClearSelection()}else onClearSelection()
+      setInteraction(null);return
+    }
     if(interaction.type==='create'){
       if(!interaction.moved){setInteraction(null);return}
       const low=Math.min(interaction.start,interaction.current), high=Math.max(interaction.start,interaction.current)
@@ -104,9 +117,11 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
   }
   function preview(){
     if(!interaction||!interaction.moved)return null
+    if(interaction.type==='select')return null
     if(interaction.type==='create'){const start=Math.min(interaction.start,interaction.current),end=Math.max(interaction.start,interaction.current);if(end<=start)return null;return {dateIndex:interaction.dateIndex,start,end,title:'',categoryId:settings.defaultCategoryId}}
     if(interaction.type==='move')return {dateIndex:interaction.dateIndex,start:interaction.start,end:interaction.start+(interaction.block.end-interaction.block.start),title:interaction.block.title,categoryId:interaction.block.categoryId}
-    return {dateIndex:dates.findIndex(d=>toISO(d)===interaction.block.date),start:interaction.block.start,end:interaction.end,title:interaction.block.title,categoryId:interaction.block.categoryId}
+    if(interaction.type==='resize')return {dateIndex:dates.findIndex(d=>toISO(d)===interaction.block.date),start:interaction.block.start,end:interaction.end,title:interaction.block.title,categoryId:interaction.block.categoryId}
+    return null
   }
   const live=preview();const now=new Date();const nowIndex=dates.findIndex(d=>toISO(d)===toISO(now));const nowTime=now.getHours()+now.getMinutes()/60
 
@@ -116,11 +131,11 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
     <div className="time-scroll" ref={scrollRef}>
       <div className="time-canvas" style={{height:24*hourHeight}}>
         <div className="time-rail">{Array.from({length:24},(_,h)=><span key={h} style={{top:h*hourHeight-6}}>{formatTime(h,settings.timeFormat).replace(':00','')}</span>)}</div>
-        <div className="week-columns" ref={columnsRef} style={{'--day-count':dates.length} as React.CSSProperties} onPointerDown={beginCreate} onPointerMove={move} onPointerUp={end} onPointerCancel={()=>setInteraction(null)} onPointerLeave={()=>setHoverTime(null)}>
+        <div className="week-columns" ref={columnsRef} style={{'--day-count':dates.length} as React.CSSProperties} onPointerDown={beginCreate} onPointerMove={move} onPointerUp={end} onPointerCancel={()=>{setInteraction(null);setTentativeIds([])}} onPointerLeave={()=>setHoverTime(null)}>
           {dates.map((date,index)=><div className={`time-column ${toISO(date)===toISO(new Date())?'today':''}`} key={toISO(date)}>{Array.from({length:24},(_,h)=><div key={h}><i className="hour-rule" style={{top:h*hourHeight}}/><i className="half-rule" style={{top:(h+.5)*hourHeight}}/></div>)}{(date.getDay()===0||date.getDay()===6)&&<div className="weekend-wash"/>}{<><div className="sleep-wash top" style={{height:settings.wakeHour*hourHeight}}/><div className="sleep-wash bottom" style={{top:settings.sleepHour*hourHeight,height:(24-settings.sleepHour)*hourHeight}}/></>}
             {ghostBlocks.filter(b=>b.date===toISO(date)).map(b=>{const c=categories.find(c=>c.id===b.categoryId)!;return <EventCard key={`g-${b.id}`} block={b} category={c} settings={settings} top={b.start*hourHeight} height={Math.max(1,(b.end-b.start)*hourHeight-1)} left={2} width={96} selected={false} ghost/>})}
             {manipulationGhosts.filter(b=>b.date===toISO(date)).map(b=>{const c=categories.find(c=>c.id===b.categoryId)!;const l=overlapLayout(currentBlocks.filter(x=>x.date===b.date),categoryOrder).get(b.id)??{left:0,width:100};return <EventCard key={`origin-${b.id}`} block={b} category={c} settings={settings} top={b.start*hourHeight} height={Math.max(1,(b.end-b.start)*hourHeight-1)} left={l.left+1} width={l.width-2} selected={false} ghost originGhost/>})}
-            {displayBlocks.filter(b=>b.date===toISO(date)).map(b=>{const c=categories.find(c=>c.id===b.categoryId)!;const l=layouts.get(b.id)??{left:0,width:100};return <EventCard key={b.id} block={b} category={c} settings={settings} top={b.start*hourHeight} height={Math.max(1,(b.end-b.start)*hourHeight-1)} left={l.left+1} width={l.width-2} selected={selectedIds.includes(b.id)} onPointerDown={beginEvent} onSelect={e=>{if(!e.shiftKey&&!e.ctrlKey&&!e.metaKey)onOpen(b.id)}} onContextMenu={e=>onEventContext(b.id,e.clientX,e.clientY)}/>})}
+            {displayBlocks.filter(b=>b.date===toISO(date)).map(b=>{const c=categories.find(c=>c.id===b.categoryId)!;const l=layouts.get(b.id)??{left:0,width:100};return <EventCard key={b.id} block={b} category={c} settings={settings} top={b.start*hourHeight} height={Math.max(1,(b.end-b.start)*hourHeight-1)} left={l.left+1} width={l.width-2} selected={selectedIds.includes(b.id)||tentativeIds.includes(b.id)} onPointerDown={beginEvent} onSelect={e=>{if(!e.shiftKey&&!e.ctrlKey&&!e.metaKey)onOpen(b.id)}} onContextMenu={e=>onEventContext(b.id,e.clientX,e.clientY)}/>})}
             {live&&interaction?.type==='create'&&live.dateIndex===index&&<div className="event-preview" style={{top:live.start*hourHeight,height:Math.max(1,(live.end-live.start)*hourHeight-1),'--event-color':categories.find(c=>c.id===live.categoryId)?.color} as React.CSSProperties}><b>{live.title}</b><span>{formatTime(live.start,settings.timeFormat)} – {formatTime(live.end,settings.timeFormat)}</span></div>}
           </div>)}
           {nowIndex>=0&&<div className="now-line" style={{top:nowTime*hourHeight,left:`calc(${nowIndex/dates.length*100}% + 1px)`,width:`${100/dates.length}%`}}><span>{formatTime(nowTime,settings.timeFormat)}</span></div>}
@@ -128,6 +143,7 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
         </div>
       </div>
     </div>
-    {interaction?.moved&&<div className="drag-tooltip">{interaction.type==='move'?`Move to ${DAY_NAMES[interaction.dateIndex]} ${formatTime(interaction.start,settings.timeFormat)}`:interaction.type==='resize'?`${formatTime(interaction.end,settings.timeFormat)} · ${Math.round((interaction.end-interaction.block.start)*60)} min`:`${formatTime(Math.min(interaction.start,interaction.current),settings.timeFormat)} – ${formatTime(Math.max(interaction.start,interaction.current),settings.timeFormat)}`}</div>}
+    {interaction?.type==='select'&&interaction.moved&&<div className="selection-rect" style={{left:Math.min(interaction.x1,interaction.x2),top:Math.min(interaction.y1,interaction.y2),width:Math.abs(interaction.x2-interaction.x1),height:Math.abs(interaction.y2-interaction.y1)}}/>}
+    {interaction?.moved&&interaction.type!=='select'&&<div className="drag-tooltip">{interaction.type==='move'?`Move to ${DAY_NAMES[interaction.dateIndex]} ${formatTime(interaction.start,settings.timeFormat)}`:interaction.type==='resize'?`${formatTime(interaction.end,settings.timeFormat)} · ${Math.round((interaction.end-interaction.block.start)*60)} min`:`${formatTime(Math.min(interaction.start,interaction.current),settings.timeFormat)} – ${formatTime(Math.max(interaction.start,interaction.current),settings.timeFormat)}`}</div>}
   </div>
 }
