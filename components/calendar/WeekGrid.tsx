@@ -56,7 +56,7 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
   const allDay=blocks.filter(b=>b.layer===layer&&b.allDay&&visibleCats.has(b.categoryId)&&dates.some(d=>toISO(d)===b.date))
 
   useLayoutEffect(()=>{const node=scrollRef.current;if(node)node.scrollTop=Math.max(0,settings.wakeHour*hourHeight)},[hourHeight,settings.wakeHour,dates.length])
-  useLayoutEffect(()=>{const measure=()=>{const node=scrollRef.current;if(node)setScrollbarWidth(node.offsetWidth-node.clientWidth)};measure();window.addEventListener('resize',measure);return()=>window.removeEventListener('resize',measure)},[dates.length])
+  useLayoutEffect(()=>{const node=scrollRef.current;if(!node)return;const measure=()=>setScrollbarWidth(node.offsetWidth-node.clientWidth);measure();const ro=new ResizeObserver(measure);ro.observe(node);return()=>ro.disconnect()},[])
 
   const layouts=useMemo(()=>{
     const map=new Map<string,{left:number;width:number}>()
@@ -126,8 +126,8 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
   const live=preview();const now=new Date();const nowIndex=dates.findIndex(d=>toISO(d)===toISO(now));const nowTime=now.getHours()+now.getMinutes()/60
 
   return <div className="calendar-surface" style={{'--scrollbar-width':`${scrollbarWidth}px`} as React.CSSProperties}>
-    <div className="day-header-grid" style={{'--day-count':dates.length} as React.CSSProperties}><div className="zone-header">GMT+5:30</div>{dates.map(d=><div className={`day-header ${toISO(d)===toISO(new Date())?'today':''}`} key={toISO(d)}><span>{DAY_NAMES[(d.getDay()+6)%7]}</span><b>{d.getDate()}</b></div>)}<div className="scrollbar-spacer"/></div>
-    <div className="all-day-grid" style={{'--day-count':dates.length} as React.CSSProperties}><button className="all-day-label">All-day <ChevronDown size={10}/></button>{dates.map(d=><div className="all-day-cell" key={toISO(d)}>{allDay.filter(b=>b.date===toISO(d)).map(b=><button key={b.id} onClick={()=>onOpen(b.id)}>{b.title}</button>)}</div>)}<div className="scrollbar-spacer"/></div>
+    <div className="day-header-grid" style={{'--day-count':dates.length} as React.CSSProperties}><div className="zone-header">GMT+5:30</div>{dates.map(d=><div className={`day-header ${toISO(d)===toISO(new Date())?'today':''}`} key={toISO(d)}><span>{DAY_NAMES[(d.getDay()+6)%7]}</span><b>{d.getDate()}</b></div>)}<div className="scrollbar-spacer" style={scrollbarWidth===0?{display:'none'}:undefined}/></div>
+    <div className="all-day-grid" style={{'--day-count':dates.length} as React.CSSProperties}><button className="all-day-label">All-day <ChevronDown size={10}/></button>{dates.map(d=><div className="all-day-cell" key={toISO(d)}>{allDay.filter(b=>b.date===toISO(d)).map(b=><button key={b.id} onClick={()=>onOpen(b.id)}>{b.title}</button>)}</div>)}<div className="scrollbar-spacer" style={scrollbarWidth===0?{display:'none'}:undefined}/></div>
     <div className="time-scroll" ref={scrollRef}>
       <div className="time-canvas" style={{height:24*hourHeight}}>
         <div className="time-rail">{Array.from({length:24},(_,h)=><span key={h} style={{top:h*hourHeight-6}}>{formatTime(h,settings.timeFormat).replace(':00','')}</span>)}</div>
