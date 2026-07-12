@@ -1,4 +1,10 @@
-import { CalendarApp } from '@/components/calendar/CalendarApp'
+'use client'
+import dynamic from 'next/dynamic'
+
+const CalendarApp = dynamic(
+  () => import('@/components/calendar/CalendarApp').then(m => ({ default: m.CalendarApp })),
+  { ssr: false }
+)
 
 export default function Home() {
   return <CalendarApp />
