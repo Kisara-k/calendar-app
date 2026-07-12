@@ -17,6 +17,7 @@ Tempo is a local-first time-blocking calendar app. Users plan their week in the 
 | Framework | Next.js 16 (App Router) |
 | UI | React 19 + TypeScript 5 |
 | Drag and drop | @dnd-kit/core + @dnd-kit/sortable |
+| Title casing | @danielhaim/titlecaser (AP style) |
 | Icons | lucide-react |
 | Color picker | react-colorful |
 | Styling | Single flat CSS file (`app/globals.css`) — no Tailwind |
@@ -48,7 +49,8 @@ CalendarCategory  — id, name, color (hex), visible, groupId?
 CalendarGroup     — id, name
 CalendarSettings  — wakeHour, sleepHour, snapMinutes, defaultDuration,
                     hourScale, showWeekends, timeFormat, underlayOpacity,
-                    defaultCategoryId, planLabel?, actualLabel?
+                    defaultCategoryId, planLabel?, actualLabel?,
+                    autoFormatTitles?
 ```
 
 ---

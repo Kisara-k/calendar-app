@@ -55,7 +55,7 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
   const ghostBlocks=layer==='actual'?blocks.filter(b=>b.layer==='plan'&&!b.allDay&&visibleCats.has(b.categoryId)&&dates.some(d=>toISO(d)===b.date)):[]
   const allDay=blocks.filter(b=>b.layer===layer&&b.allDay&&visibleCats.has(b.categoryId)&&dates.some(d=>toISO(d)===b.date))
 
-  useLayoutEffect(()=>{const node=scrollRef.current;if(node)node.scrollTop=Math.max(0,(settings.wakeHour-1)*hourHeight)},[hourHeight,settings.wakeHour,dates.length])
+  useLayoutEffect(()=>{const node=scrollRef.current;if(node)node.scrollTop=Math.max(0,settings.wakeHour*hourHeight)},[hourHeight,settings.wakeHour,dates.length])
   useLayoutEffect(()=>{const measure=()=>{const node=scrollRef.current;if(node)setScrollbarWidth(node.offsetWidth-node.clientWidth)};measure();window.addEventListener('resize',measure);return()=>window.removeEventListener('resize',measure)},[dates.length])
 
   const layouts=useMemo(()=>{
