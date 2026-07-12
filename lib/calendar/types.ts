@@ -14,6 +14,8 @@ export type CalendarCategory = {
 
 export type CalendarGroup = { id:string; name:string }
 
+export type DeletedCalendar = { category: CalendarCategory; blocks: CalendarBlock[]; deletedAt: string }
+
 export type CalendarBlock = {
   id: string
   date: string
@@ -39,6 +41,8 @@ export type CalendarSettings = {
   showWeekends: boolean
   timeFormat: '12h' | '24h'
   underlayOpacity: number
+  planLabel?: string
+  actualLabel?: string
 }
 
 export type CalendarData = {
@@ -49,4 +53,5 @@ export type CalendarData = {
   settings: CalendarSettings
   quoteBank: string[]
   currentQuote: string
+  deletedCalendars?: DeletedCalendar[]
 }
