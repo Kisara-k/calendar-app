@@ -1,0 +1,6 @@
+'use client'
+import { Repeat2, X } from 'lucide-react'
+import type { RecurrenceScope } from '@/lib/calendar/types'
+
+type Props={action:'edit'|'move'|'resize'|'delete';onChoose:(scope:RecurrenceScope)=>void;onClose:()=>void}
+export function RecurrenceScopeDialog({action,onChoose,onClose}:Props){return <div className="confirm-backdrop" onPointerDown={onClose}><section className="confirm-dialog recurrence-scope-dialog" role="dialog" aria-modal="true" aria-labelledby="recurrence-scope-title" onPointerDown={e=>e.stopPropagation()}><header><Repeat2 size={17}/><button aria-label="Close" onClick={onClose}><X size={15}/></button></header><h2 id="recurrence-scope-title">{action==='delete'?'Delete recurring event?':`${action[0].toUpperCase()+action.slice(1)} recurring event?`}</h2><p>Choose which events in this series should be {action==='delete'?'deleted':'changed'}.</p><div className="scope-options"><button autoFocus onClick={()=>onChoose('only')}><b>Only this event</b><span>Other events in the series stay unchanged.</span></button><button onClick={()=>onChoose('following')}><b>This and all following events</b><span>Keep earlier events unchanged.</span></button><button onClick={()=>onChoose('all')}><b>All events</b><span>Apply to the entire recurring set.</span></button></div></section></div>}
