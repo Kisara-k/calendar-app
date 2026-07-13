@@ -6,6 +6,7 @@ This document records the recurrence failures encountered during implementation,
 
 - Every occurrence in a repeating set keeps the same immutable `seriesId`.
 - Every occurrence keeps its original stable `occurrenceIndex`.
+- Every occurrence keeps its original immutable `recurrenceDate`, `recurrenceStart`, and `recurrenceEnd` anchors.
 - `Only this event` affects exactly one occurrence.
 - `This and all following events` affects the selected occurrence and all greater occurrence indexes.
 - `All events` affects every occurrence with the same `seriesId`, regardless of earlier exceptions.
@@ -53,7 +54,7 @@ The next implementation kept the set coupled but applied a shared movement delta
 What worked:
 
 - For every changed schedule dimension, assign the selected event's final value directly to every in-scope occurrence.
-- Update the corresponding canonical `recurrenceStart` and `recurrenceEnd` values to the same final values.
+- Assign final values only to visible `date`, `start`, and `end`; never rewrite the canonical recurrence anchors.
 - For date changes, derive each new date from its canonical recurrence date rather than its already-excepted current date.
 
 What did not work and must not be retried:
@@ -62,6 +63,22 @@ What did not work and must not be retried:
 - Adding the same drag delta to prior exceptions.
 - Preserving exception offsets during `following` or `all` schedule changes.
 - FullCalendar-style grouped movement: its `groupId` behavior applies a shared delta and does not implement Tempo's absolute scope semantics.
+
+### Cross-day moves collapsed adjacent occurrences
+
+Moving event 2 back 26 hours with `following`, then moving event 1 forward 22 hours with `following`, caused event 1 and event 2 to occupy the same date and time. The reducer had rewritten `recurrenceDate` during the first move, so the second move used an already-shifted value as an identity anchor.
+
+What worked:
+
+- Treat `recurrenceDate`, `recurrenceStart`, and `recurrenceEnd` like Google Calendar's immutable original occurrence coordinates.
+- Calculate the selected event's final date offset from its immutable `recurrenceDate`.
+- Rebuild every in-scope visible date from its own immutable anchor plus that offset.
+
+What did not work and must not be retried:
+
+- Updating `recurrenceDate` to the moved date.
+- Using a previously shifted date as the baseline of a later scoped move.
+- Treating canonical anchors as the current series schedule; current schedule values belong in `date`, `start`, and `end`.
 
 ### Live title editing prompted on every letter
 
@@ -97,8 +114,9 @@ For every future recurrence change:
 2. Assert set identity, occurrence ordering, scope boundaries, final start/end values, canonical values, and delete-all reachability.
 3. Include chained `only`, `following`, and `all` operations, not only single operations.
 4. Test every relevant cut/source permutation when the state space is small.
-5. Create a fresh recurring set in the production UI and reproduce the complete drag/resize/delete flow.
-6. Verify occurrences outside the visible week by navigating to them.
-7. Check browser warnings/errors, run `npm test`, run TypeScript checking, and run the production build.
+5. Include cross-day moves in both directions, especially when the second scope starts before the first scope.
+6. Create a fresh recurring set in the production UI and reproduce the complete drag/resize/delete flow.
+7. Verify occurrences outside the visible week by navigating to them.
+8. Check browser warnings/errors, run `npm test`, run TypeScript checking, and run the production build.
 
 Previously split persisted sets cannot be safely reconstructed automatically because the old implementation discarded their lineage. Do not heuristically merge them; that could couple unrelated events.

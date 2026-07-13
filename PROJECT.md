@@ -45,8 +45,8 @@ CalendarBlock
 ├── notes?, status? (ActualStatus), sourcePlanId?, allDay?
 ├── seriesId?, occurrenceIndex? ← recurring-series identity/order
 ├── recurrence? (weekly interval, selected weekdays, weeks, optional extra days)
-├── recurrenceDate? ← canonical generated date, retained by one-off exceptions
-├── recurrenceStart?, recurrenceEnd? ← canonical series times for scoped transforms
+├── recurrenceDate? ← immutable generated-date anchor for the occurrence
+├── recurrenceStart?, recurrenceEnd? ← immutable generated-time anchors
 └── status: 'completed'|'partial'|'skipped'|'unplanned'
 
 CalendarCategory  — id, name, color (hex), visible, groupId?
@@ -65,7 +65,7 @@ CalendarSettings  — wakeHour, sleepHour, snapMinutes, defaultDuration,
 - **Draft blocks** — A block created by dragging on the grid stays as a draft until it has a non-empty title or non-default category. Drafts are discarded on close.
 - **Default category** — One calendar is marked default; new blocks use it automatically.
 - **Tabs (groups)** — Calendars are organized into collapsible tabs in the sidebar.
-- **Recurring blocks** — Recurrence is materialized as ordinary blocks sharing one immutable `seriesId` and stable `occurrenceIndex` values. Canonical date/start/end fields identify each generated occurrence independently of one-off moves. The weekly rule supports selected weekdays and an unrestricted week duration; daily repeats accept weeks plus days and once-weekly repeats are presets of the same rule.
+- **Recurring blocks** — Recurrence is materialized as ordinary blocks sharing one immutable `seriesId` and stable `occurrenceIndex` values. Immutable canonical date/start/end anchors identify each generated occurrence independently of one-off moves and are never rewritten by scoped updates. The weekly rule supports selected weekdays and an unrestricted week duration; daily repeats accept weeks plus days and once-weekly repeats are presets of the same rule.
 
 ---
 
@@ -137,7 +137,7 @@ All three floating context menus (`CalendarMenu`, `GroupMenu`, `EventMenu`) shar
 - Moving, resizing, deleting, or editing a recurring occurrence prompts for `Only this event`, `This and all following events`, or `All events`.
 - `Only this event` creates an exception without changing its siblings.
 - `This and all following events` changes the selected occurrence and later occurrence indexes without changing their `seriesId` or indexes. Scoped edits never sever the original repeating set.
-- Following/all schedule transforms are absolute assignments. Every in-scope occurrence receives the selected event's final start/end values, and date moves rebuild each in-scope date from its canonical recurrence date plus the selected date shift. This intentionally removes prior schedule exceptions inside the chosen scope; edits to non-schedule fields leave those exceptions untouched.
+- Following/all schedule transforms are absolute assignments. Every in-scope occurrence receives the selected event's final start/end values, and date moves rebuild each in-scope date from its immutable `recurrenceDate` plus the selected date shift. The canonical recurrence date/start/end anchors are never rewritten. This intentionally removes prior schedule exceptions inside the chosen scope; edits to non-schedule fields leave those exceptions untouched.
 - The inspector remembers the chosen edit scope for the selected recurring event until the inspector closes or selection changes, keeping live-save title editing to one scope prompt.
 - Repeat-rule changes regenerate the series atomically through `commit()`; choosing `Does not repeat` detaches the selected occurrence.
 
@@ -147,7 +147,7 @@ All three floating context menus (`CalendarMenu`, `GroupMenu`, `EventMenu`) shar
 - Calendar soft-delete uses Settings > Recently deleted (persistent recovery)
 
 ### Tests
-- `npm test` runs persistent Node regression tests. Recurrence tests cover multi-day and daily generation, absolute canonical schedule assignment, mixed scoped edits/deletes, all pairs of successive following cuts, and all three-following permutations followed by all-events moves from every source occurrence. Every sequence asserts immutable set identity, stable occurrence ordering, scope boundaries, and delete-all reachability from every surviving occurrence.
+- `npm test` runs persistent Node regression tests. Recurrence tests cover multi-day and daily generation, absolute schedule assignment, immutable canonical anchors, cross-day moves, mixed scoped edits/deletes, all pairs of successive following cuts, and all three-following permutations followed by all-events moves from every source occurrence. Every sequence asserts immutable set identity, stable occurrence ordering, scope boundaries, and delete-all reachability from every surviving occurrence.
 
 ---
 

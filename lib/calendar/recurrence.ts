@@ -85,12 +85,11 @@ export function applyScopedUpdate(blocks:CalendarBlock[],original:CalendarBlock,
     const index=order.get(canonical.id)!
     if(!isInScope(scope,index,cut))return canonical
 
-    const recurrenceDate=dateChanged?moveDate(canonical.recurrenceDate!,dateShift):canonical.recurrenceDate
-    const date=dateChanged?recurrenceDate!:canonical.date
+    const date=dateChanged?moveDate(canonical.recurrenceDate!,dateShift):canonical.date
     const start=startChanged?next.start:canonical.start
     const end=endChanged?next.end:canonical.end
 
-    return {...canonical,...fieldChanges,date,start,end,seriesId:original.seriesId,occurrenceIndex:index,recurrenceDate,recurrenceStart:startChanged?next.start:canonical.recurrenceStart,recurrenceEnd:endChanged?next.end:canonical.recurrenceEnd}
+    return {...canonical,...fieldChanges,date,start,end,seriesId:original.seriesId,occurrenceIndex:index,recurrenceDate:canonical.recurrenceDate,recurrenceStart:canonical.recurrenceStart,recurrenceEnd:canonical.recurrenceEnd}
   })
 }
 
