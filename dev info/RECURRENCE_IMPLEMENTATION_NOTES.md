@@ -7,7 +7,7 @@ This document records the recurrence failures encountered during implementation,
 - Every occurrence in a repeating set keeps the same immutable `seriesId`.
 - Every occurrence keeps its original stable `occurrenceIndex`.
 - Every occurrence keeps its original immutable `recurrenceDate`, `recurrenceStart`, and `recurrenceEnd` anchors.
-- `Only this event` affects exactly one occurrence.
+- `This event only` affects exactly one occurrence.
 - `This and all following events` affects the selected occurrence and all greater occurrence indexes.
 - `All events` affects every occurrence with the same `seriesId`, regardless of earlier exceptions.
 - A schedule change is absolute within its scope: changed start/end values are assigned from the selected event's final slot. Previous schedule offsets inside that scope are removed.

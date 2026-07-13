@@ -134,8 +134,8 @@ All three floating context menus (`CalendarMenu`, `GroupMenu`, `EventMenu`) shar
 ### Recurring events
 - `Multiple days a week` preselects the event's creation weekday, permits any non-empty weekday combination, and accepts an unrestricted number of weeks. Every day and every week are presets of the same weekly rule.
 - New repeat configurations have no prefilled duration. `Every day` accepts weeks and days, materializing `weeks × 7 + days` daily occurrences.
-- Moving, resizing, deleting, or editing a recurring occurrence prompts for `Only this event`, `This and all following events`, or `All events`.
-- `Only this event` creates an exception without changing its siblings.
+- Moving, resizing, deleting, or editing a recurring occurrence prompts for `This event only`, `This and all following events`, or `All events`.
+- `This event only` creates an exception without changing its siblings.
 - `This and all following events` changes the selected occurrence and later occurrence indexes without changing their `seriesId` or indexes. Scoped edits never sever the original repeating set.
 - Following/all schedule transforms are absolute assignments. Every in-scope occurrence receives the selected event's final start/end values, and date moves rebuild each in-scope date from its immutable `recurrenceDate` plus the selected date shift. The canonical recurrence date/start/end anchors are never rewritten. This intentionally removes prior schedule exceptions inside the chosen scope; edits to non-schedule fields leave those exceptions untouched.
 - The inspector remembers the chosen edit scope for the selected recurring event until the inspector closes or selection changes, keeping live-save title editing to one scope prompt.
