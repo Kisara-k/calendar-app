@@ -20,7 +20,12 @@ function canonicalize(block:CalendarBlock,baseStart:number,baseEnd:number){retur
 
 function recurringFieldChanges(original:CalendarBlock,next:CalendarBlock){return recurringKeys.reduce<Partial<CalendarBlock>>((changes,key)=>Object.is(original[key],next[key])?changes:{...changes,[key]:next[key]}, {})}
 
-function isInScope(scope:RecurrenceScope,index:number,cut:number){return scope==='all'||index>=cut}
+function shiftWeekdays(rule:RecurrenceRule,dayShift:number):RecurrenceRule{
+  const net=((dayShift%7)+7)%7
+  if(!net||rule.mode==='daily')return rule
+  const shifted=rule.weekdays.map(d=>(d+net)%7)
+  return {...rule,weekdays:[...shifted].sort((a,b)=>a-b)}
+}
 
 export function recurrenceMode(rule:RecurrenceRule):'daily'|'weekly'|'multiple'{return rule.mode??(rule.weekdays.length===7?'daily':rule.weekdays.length===1?'weekly':'multiple')}
 
@@ -78,18 +83,34 @@ export function applyScopedUpdate(blocks:CalendarBlock[],original:CalendarBlock,
   const endChanged=original.end!==next.end
   const dateShift=dateChanged?daysBetween(original.recurrenceDate??original.date,next.date):0
   const fieldChanges=recurringFieldChanges(original,next)
+  const updatedRecurrence=dateChanged&&original.recurrence?shiftWeekdays(original.recurrence,dateShift):null
+
+  if(scope==='following'){
+    const newSeriesId=crypto.randomUUID()
+    const tailMembers=[...members].filter(b=>(order.get(b.id)??0)>=cut).sort((a,b)=>(order.get(a.id)??0)-(order.get(b.id)??0))
+    const tailMap=new Map<string,CalendarBlock>()
+    tailMembers.forEach((block,newIndex)=>{
+      const canonical=canonicalize(block,baseStart,baseEnd)
+      const date=dateChanged?moveDate(canonical.recurrenceDate!,dateShift):canonical.date
+      const start=startChanged?next.start:canonical.start
+      const end=endChanged?next.end:canonical.end
+      tailMap.set(block.id,{...canonical,...fieldChanges,date,start,end,seriesId:newSeriesId,occurrenceIndex:newIndex,recurrenceDate:date,recurrenceStart:start,recurrenceEnd:end,...(updatedRecurrence?{recurrence:updatedRecurrence}:{})})
+    })
+    return blocks.map(block=>{
+      if(block.seriesId!==original.seriesId)return block
+      if(tailMap.has(block.id))return tailMap.get(block.id)!
+      return canonicalize(block,baseStart,baseEnd)
+    })
+  }
 
   return blocks.map(block=>{
     if(block.seriesId!==original.seriesId)return block
     const canonical=canonicalize(block,baseStart,baseEnd)
     const index=order.get(canonical.id)!
-    if(!isInScope(scope,index,cut))return canonical
-
     const date=dateChanged?moveDate(canonical.recurrenceDate!,dateShift):canonical.date
     const start=startChanged?next.start:canonical.start
     const end=endChanged?next.end:canonical.end
-
-    return {...canonical,...fieldChanges,date,start,end,seriesId:original.seriesId,occurrenceIndex:index,recurrenceDate:canonical.recurrenceDate,recurrenceStart:canonical.recurrenceStart,recurrenceEnd:canonical.recurrenceEnd}
+    return {...canonical,...fieldChanges,date,start,end,seriesId:original.seriesId,occurrenceIndex:index,recurrenceDate:canonical.recurrenceDate,recurrenceStart:canonical.recurrenceStart,recurrenceEnd:canonical.recurrenceEnd,...(updatedRecurrence?{recurrence:updatedRecurrence}:{})}
   })
 }
 
