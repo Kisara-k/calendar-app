@@ -42,9 +42,15 @@ The same two public values may be added to the production hosting provider, so l
 3. Copy the complete contents of `supabase/migrations/20260714000000_database.sql` into the editor and select **Run**.
 4. Create another new query.
 5. Copy the complete contents of `supabase/migrations/20260714010000_password_auth_and_quotas.sql` and select **Run**.
-6. Both queries should finish with `Success. No rows returned`.
+6. Create a third new query.
+7. Copy the complete contents of `supabase/migrations/20260714020000_concurrency_safety.sql` and select **Run**.
+8. Create a fourth new query.
+9. Copy the complete contents of `supabase/migrations/20260714030000_consistent_snapshot_reads.sql` and select **Run**.
+10. Create a fifth new query.
+11. Copy the complete contents of `supabase/migrations/20260714040000_revision_broadcasts.sql` and select **Run**.
+12. All five queries should finish with `Success. No rows returned`.
 
-The second migration creates account profiles and quota entitlements, replaces the write RPC with the quota-enforcing version, and removes direct client write privileges. Do not expose `account_entitlements` through a custom API.
+The second migration creates account profiles and quota entitlements, replaces the write RPC with the quota-enforcing version, and removes direct client write privileges. The third adds expected-revision writes and a private mutation ledger so concurrent browsers cannot silently overwrite one another and ambiguous retries remain idempotent. The fourth loads every normalized table and its revision in one consistent database snapshot. The fifth replaces per-row Realtime events with one minimal revision invalidation per committed patch. Do not expose `account_entitlements` or `applied_mutations` through a custom API.
 
 ### CLI method
 
@@ -129,7 +135,7 @@ left join public.accounts on accounts.user_id = profiles.user_id
 order by profiles.email;
 ```
 
-The quota is checked after applying a patch but before committing the transaction. If the patch is too large, the entire database operation rolls back. The browser keeps its local pending copy, shows **Storage limit reached**, and can sync it after data is reduced or the email entitlement is increased.
+The quota is checked after applying a patch but before committing the transaction. If the patch is too large, the entire database operation rolls back. The browser keeps its pending copy in the short-lived delivery outbox, shows **Storage limit reached**, and can sync it after data is reduced or the email entitlement is increased. The outbox protects interrupted delivery; it is not a general offline-storage feature.
 
 ## 7. Verify the full flow
 

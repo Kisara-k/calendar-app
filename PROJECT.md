@@ -1,4 +1,4 @@
-# Tempo — Project Understanding
+# Calendar — Project Understanding
 
 **Keep this file current.** Update it whenever architecture, data model, key behaviors, or component roles change meaningfully. Both `CLAUDE.md` and `AGENTS.md` instruct their readers to maintain this file.
 
@@ -6,7 +6,7 @@
 
 ## What This Is
 
-Tempo is a local-first time-blocking calendar app. Users plan their week in the **Plan** layer and record what actually happened in the **Actual** layer. Email/password-authenticated workspaces persist to normalized, user-scoped Supabase Postgres tables. Per-user browser caches and a durable pending-write queue keep interactions immediate and allow edits to survive transient network failures.
+This is an optimistic time-blocking web app. Users plan their week in the **Plan** layer and record what actually happened in the **Actual** layer. Email/password-authenticated workspaces persist to normalized, user-scoped Supabase Postgres tables. React state makes edits appear immediately. IndexedDB holds the last Supabase-acknowledged workspace as a disposable read cache plus a short-lived pending-write delivery outbox; this protects interrupted saves but does not provide a general offline mode.
 
 ---
 
@@ -23,7 +23,7 @@ Tempo is a local-first time-blocking calendar app. Users plan their week in the 
 | Styling | Single flat CSS file (`app/globals.css`) — no Tailwind |
 | State | Custom hook (`useCalendarStore`) — no external state library |
 | Authentication | Supabase Auth with verified email + password and unique account usernames |
-| Persistence | Supabase Postgres + private Realtime Broadcast, with per-user `localStorage` cache/write queue |
+| Persistence | Supabase Postgres + private Realtime Broadcast, with an acknowledged-snapshot IndexedDB cache and pending-write delivery outbox |
 
 SSR is disabled for the entire app via `dynamic(..., { ssr: false })` in `app/page.tsx` because all state is client-only.
 
@@ -62,7 +62,8 @@ CalendarSettings  — wakeHour, sleepHour, snapMinutes, defaultDuration,
 The database representation is normalized rather than storing this root object as one JSON blob:
 
 ```
-accounts           — one row per auth user; settings JSON, quote data, revision/idempotency and logical-usage metadata
+accounts           — one row per auth user; settings JSON, quote data, workspace revision and logical-usage metadata
+applied_mutations  — private 30-day mutation ledger for idempotent retry results
 profiles           — account username, normalized email, and effective logical-storage limit
 account_entitlements — administrator-only per-email storage-limit overrides
 groups             — ordered calendar tabs
@@ -94,7 +95,9 @@ Single custom hook. All mutations go through `commit()`, which:
 
 Undo/redo walk `past`/`future`. Block deletion also shows a 6-second undo toast (`store.undo`). Calendar deletion does NOT use the toast — it moves the calendar to `deletedCalendars` (soft delete, recoverable from Settings).
 
-`commit()` is also the local-first persistence boundary. It updates React state and the per-user cache synchronously, then coalesces changes for 350 ms and computes a normalized row diff against the last acknowledged database snapshot. `apply_patch()` applies that diff atomically and idempotently. Failed writes and their mutation ID remain under per-user pending keys and retry after reconnect, focus, or reload. Private Realtime Broadcast events cause idle clients to refetch; database delay never blocks a UI mutation.
+`commit()` is also the optimistic persistence boundary. It updates React state immediately, writes the latest pending workspace to a per-tab IndexedDB delivery outbox, then coalesces changes for 350 ms (with a 1.5-second maximum wait) and computes a normalized row diff against the last acknowledged database snapshot. `apply_patch()` accepts that snapshot's expected revision, applies the diff atomically, and records the frozen mutation ID in a durable server-side idempotency ledger. The outbox entry is removed only after acknowledgement. Page-hide/close starts an immediate best-effort flush, and a close warning is attached only while edits remain unsaved.
+
+On startup, tabs identify live sibling tabs through `BroadcastChannel` before claiming abandoned outbox records. Abandoned edits are merged with the latest consistent Supabase snapshot using the same deterministic three-way merge as ordinary revision conflicts. Independent field changes rebase automatically; overlapping field edits and delete-versus-edit cases require an explicit server/device choice. This is crash/reload delivery protection, not an offline product contract: the UI is not designed for extended offline use, but a pending edit remains retryable after an interrupted tab. Private Realtime Broadcast events notify other clients; a scalar revision check prevents unnecessary full workspace reads, so database delay never blocks a UI mutation.
 
 ---
 
@@ -133,9 +136,14 @@ Supporting modules in `lib/calendar/`:
 Supabase modules:
 - `hooks/useSupabaseAuth.ts` — persisted email/password session, signup, recovery, password update, and local sign-out
 - `lib/supabase/client.ts` — singleton browser client using the publishable key
-- `lib/supabase/database.ts` — database mapping, snapshot diffing, transactional patch calls, and remote loading
+- `lib/supabase/database.ts` — database mapping, snapshot diffing, transactional patch calls, and consistent remote loading
+- `lib/supabase/merge.ts` — deterministic field-level three-way merge and overlap detection
+- `lib/supabase/persistence.ts` — IndexedDB acknowledged-snapshot cache and per-tab pending-write delivery outbox
 - `supabase/migrations/20260714000000_database.sql` — normalized workspace schema, constraints, RLS, indexes, initial RPC, and private Broadcast triggers
 - `supabase/migrations/20260714010000_password_auth_and_quotas.sql` — profiles, email entitlements, auth triggers, RPC-only writes, and transactional logical quotas
+- `supabase/migrations/20260714020000_concurrency_safety.sql` — expected-revision writes and durable idempotency ledger
+- `supabase/migrations/20260714030000_consistent_snapshot_reads.sql` — one-transaction normalized workspace reads
+- `supabase/migrations/20260714040000_revision_broadcasts.sql` — one minimal revision invalidation per committed workspace patch
 
 ---
 
@@ -179,15 +187,21 @@ All three floating context menus (`CalendarMenu`, `GroupMenu`, `EventMenu`) shar
 - A unique username is chosen during signup and used as account identity/display metadata. Login remains email + password because Supabase Auth does not natively authenticate usernames; the app does not expose a username-to-email lookup.
 - Confirmation and recovery redirects use the browser origin, allowing allow-listed localhost and production origins to share one Supabase project.
 - Supabase URL and publishable key are public client configuration. Secret/service-role keys must never be exposed to the browser.
-- A first-time account uploads the existing legacy local workspace when the remote account is empty. Existing remote data wins on a new device.
-- Each user's cache, acknowledged base snapshot, unsynced pending snapshot, and pending mutation ID use separate user-ID-qualified `localStorage` keys.
+- A first-time account starts from the demo workspace and immediately creates its authoritative Supabase workspace. There is no pre-Supabase data migration path because the application has no legacy users.
+- IndexedDB stores one user-qualified, Supabase-acknowledged snapshot as a disposable warm cache. A separate per-tab outbox stores only the current pending workspace, its merge base, and any frozen mutation identity until Supabase acknowledges it. Abandoned records are recovered and merged on the next app startup; active sibling tabs retain ownership of their records.
 - Row-level security is the authorization boundary. Client-side `user_id` filters are additionally used for query planning/performance.
-- Authenticated clients have read access but no direct table-write grants. All workspace mutations go through the hardened `apply_patch()` RPC, which derives `user_id` from `auth.uid()`.
-- Each account defaults to a 5 MiB logical calendar-payload quota. The RPC serializes same-user writes, computes usage inside the patch transaction, and rolls the whole patch back when it would exceed the effective per-email entitlement. A rejected local change remains queued in the browser.
+- Authenticated clients have read access but no direct table-write grants. All workspace mutations go through the hardened `apply_patch()` RPC, which derives `user_id` from `auth.uid()`, serializes writes for that user, rejects stale expected revisions, and returns the committed revision.
+- Workspace loads use one `get_snapshot()` RPC so the revision and every normalized table are observed from the same PostgreSQL statement snapshot; clients never merge against rows from different commits.
+- Startup, focus, and Realtime invalidations first read only the account revision. The full normalized snapshot is fetched only when no cache exists or that revision changed. Own successful writes update the cache directly and do not re-download the workspace.
+- Realtime emits one small private `workspace_changed` message containing only the new revision after each committed patch. It does not broadcast every changed row, preventing recurring/bulk operations from producing redundant messages or exposing row payloads to the notification layer.
+- The complete workspace remains the synchronization unit because recurrence scopes, global search/export, soft-delete restore, and undo require all related rows. Date-window paging would make those existing contracts incomplete; revision validation avoids unnecessary downloads without weakening them.
+- Applied mutation IDs and payload hashes are retained for 30 days. A retry after a lost response returns the original result, while accidental mutation-ID reuse with a different payload is rejected.
+- Disjoint concurrent edits are merged at field level and retried automatically. Same-field changes and delete-versus-edit conflicts never resolve silently; the app combines all non-overlapping work and asks which version wins only for the overlapping fields.
+- Each account defaults to a 5 MiB logical calendar-payload quota. The RPC serializes same-user writes, computes usage inside the patch transaction, and rolls the whole patch back when it would exceed the effective per-email entitlement. A rejected change remains visible with an error state and stays in the delivery outbox so reducing data or increasing the entitlement can make it retryable.
 - Soft-deleted calendars remain as calendar rows with `deleted_at`; their blocks stay normalized and are reattached on restore.
 
 ### Tests
-- `npm test` runs persistent Node regression tests. Recurrence tests cover multi-day and daily generation, absolute schedule assignment, immutable canonical anchors, cross-day moves, mixed scoped edits/deletes, all pairs of successive following cuts, and all three-following permutations followed by all-events moves from every source occurrence. Every sequence asserts immutable set identity, stable occurrence ordering, scope boundaries, and delete-all reachability from every surviving occurrence.
+- `npm test` runs persistent Node regression tests. Recurrence tests cover multi-day and daily generation, absolute schedule assignment, immutable canonical anchors, cross-day moves, mixed scoped edits/deletes, all pairs of successive following cuts, and all three-following permutations followed by all-events moves from every source occurrence. Sync tests cover same-row disjoint edits, same-field conflicts, both conflict choices, delete-versus-edit conflicts, independent-row changes, nested settings merges, and object-order stability.
 
 ---
 
