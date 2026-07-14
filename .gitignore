@@ -4,3 +4,7 @@ docs/
 .next/
 .validation/
 .env
+.env.local
+.supabase_cli
+supabase/.temp/
+tsconfig.tsbuildinfo
