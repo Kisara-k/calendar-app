@@ -13,7 +13,7 @@ type Interaction =
   | {type:'resize';pointerId:number;originX:number;originY:number;block:CalendarBlock;end:number;moved:boolean}
   | {type:'select';pointerId:number;originX:number;originY:number;x1:number;y1:number;x2:number;y2:number;moved:boolean}
 
-type Props={dates:Date[];blocks:CalendarBlock[];categories:CalendarCategory[];settings:CalendarSettings;layer:Layer;selectedIds:string[];onSelect:(id:string,additive:boolean)=>void;onSelectMany:(ids:string[])=>void;onClearSelection:()=>void;onCreate:(b:Omit<CalendarBlock,'id'>)=>CalendarBlock;onUpdate:(b:CalendarBlock)=>void;onUpdateMany:(b:CalendarBlock[])=>void;onOpen:(id:string)=>void;onEventContext:(id:string,x:number,y:number)=>void}
+type Props={dates:Date[];blocks:CalendarBlock[];categories:CalendarCategory[];settings:CalendarSettings;layer:Layer;selectedIds:string[];onSelect:(id:string,additive:boolean)=>void;onSelectMany:(ids:string[])=>void;onClearSelection:()=>void;onCreate:(b:Omit<CalendarBlock,'id'>)=>CalendarBlock;onUpdate:(b:CalendarBlock,action:'move'|'resize')=>void;onUpdateMany:(b:CalendarBlock[])=>void;onOpen:(id:string)=>void;onEventContext:(id:string,x:number,y:number)=>void}
 
 const clamp=(n:number,min:number,max:number)=>Math.max(min,Math.min(max,n))
 
@@ -111,8 +111,8 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
       const block=onCreate({date:toISO(dates[interaction.dateIndex]),start,end,title:'',categoryId:settings.defaultCategoryId,layer});onSelect(block.id,false);onOpen(block.id)
     }
     if(interaction.type==='move'&&!interaction.moved&&interaction.openOnRelease)onOpen(interaction.block.id)
-    if(interaction.type==='move'&&interaction.moved){const duration=interaction.block.end-interaction.block.start;const movingGroup=selectedIds.includes(interaction.block.id)&&selectedIds.length>1;if(movingGroup){const originalIndex=dates.findIndex(d=>toISO(d)===interaction.block.date);const dayDelta=interaction.dateIndex-originalIndex;const timeDelta=interaction.start-interaction.block.start;onUpdateMany(blocks.filter(b=>selectedIds.includes(b.id)).map(b=>{const ownDuration=b.end-b.start;const nextStart=clamp(b.start+timeDelta,0,24-ownDuration);return {...b,date:toISO(addDays(fromISO(b.date),dayDelta)),start:nextStart,end:nextStart+ownDuration}}))}else onUpdate({...interaction.block,date:toISO(dates[interaction.dateIndex]),start:interaction.start,end:interaction.start+duration})}
-    if(interaction.type==='resize'&&interaction.moved)onUpdate({...interaction.block,end:interaction.end})
+    if(interaction.type==='move'&&interaction.moved){const duration=interaction.block.end-interaction.block.start;const movingGroup=selectedIds.includes(interaction.block.id)&&selectedIds.length>1;if(movingGroup){const originalIndex=dates.findIndex(d=>toISO(d)===interaction.block.date);const dayDelta=interaction.dateIndex-originalIndex;const timeDelta=interaction.start-interaction.block.start;onUpdateMany(blocks.filter(b=>selectedIds.includes(b.id)).map(b=>{const ownDuration=b.end-b.start;const nextStart=clamp(b.start+timeDelta,0,24-ownDuration);return {...b,date:toISO(addDays(fromISO(b.date),dayDelta)),start:nextStart,end:nextStart+ownDuration}}))}else onUpdate({...interaction.block,date:toISO(dates[interaction.dateIndex]),start:interaction.start,end:interaction.start+duration},'move')}
+    if(interaction.type==='resize'&&interaction.moved)onUpdate({...interaction.block,end:interaction.end},'resize')
     setInteraction(null)
   }
   function preview(){

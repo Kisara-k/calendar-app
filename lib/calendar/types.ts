@@ -3,6 +3,16 @@ export type ViewMode = 'day' | 'week' | 'month'
 export type Panel = 'event' | 'insights' | 'settings' | 'search' | 'shortcuts' | null
 export type UtilityPanel = Exclude<Panel, 'event'>
 export type ActualStatus = 'completed' | 'partial' | 'skipped' | 'unplanned'
+export type RecurrenceScope = 'only' | 'following' | 'all'
+
+export type RecurrenceRule = {
+  frequency: 'weekly'
+  interval: number
+  weekdays: number[]
+  weeks: number
+  days?: number
+  mode?: 'daily' | 'weekly' | 'multiple'
+}
 
 export type CalendarCategory = {
   id: string
@@ -28,6 +38,12 @@ export type CalendarBlock = {
   allDay?: boolean
   sourcePlanId?: string
   status?: ActualStatus
+  seriesId?: string
+  recurrence?: RecurrenceRule
+  occurrenceIndex?: number
+  recurrenceDate?: string
+  recurrenceStart?: number
+  recurrenceEnd?: number
 }
 
 export type CalendarSettings = {
