@@ -139,7 +139,7 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
             {live&&interaction?.type==='create'&&live.dateIndex===index&&<div className="event-preview" style={{top:live.start*hourHeight,height:Math.max(1,(live.end-live.start)*hourHeight-1),'--event-color':categories.find(c=>c.id===live.categoryId)?.color} as React.CSSProperties}><b>{live.title}</b><span>{formatTime(live.start,settings.timeFormat)} – {formatTime(live.end,settings.timeFormat)}</span></div>}
           </div>)}
           {nowIndex>=0&&<div className="now-line" style={{top:nowTime*hourHeight,left:`calc(${nowIndex/dates.length*100}% + 1px)`,width:`${100/dates.length}%`}}><span>{formatTime(nowTime,settings.timeFormat)}</span></div>}
-          {hoverTime&&!interaction&&<div className={`hover-time${scrollRef.current&&hoverTime.time*hourHeight>scrollRef.current.scrollTop+scrollRef.current.clientHeight-24?' flip':''}`} style={{top:hoverTime.time*hourHeight,left:`${hoverTime.day/dates.length*100}%`,width:`${100/dates.length}%`}}><span>{formatTime(hoverTime.time,settings.timeFormat)}</span></div>}
+          {hoverTime&&!interaction&&<div className={`hover-time${scrollRef.current&&hoverTime.time*hourHeight>scrollRef.current.scrollTop+scrollRef.current.clientHeight-24?' flip':''}`} style={{top:hoverTime.time>=24?24*hourHeight-1:hoverTime.time*hourHeight,left:`${hoverTime.day/dates.length*100}%`,width:`${100/dates.length}%`}}><span>{formatTime(hoverTime.time,settings.timeFormat)}</span></div>}
         </div>
       </div>
     </div>
