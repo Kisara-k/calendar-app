@@ -20,6 +20,7 @@ import { CommandPalette } from './CommandPalette'
 import { EventMenu } from './FloatingMenus'
 import { ResizeHandle } from './ResizeHandle'
 import { RecurrenceScopeDialog } from './RecurrenceScopeDialog'
+import { AppLoading } from '@/components/AppLoading'
 
 export function CalendarApp({user,onSignOut}:{user:User;onSignOut:()=>void}){
   const store=useCalendarStore(user),{data}=store
@@ -76,7 +77,7 @@ if(mod&&key==='k'){e.preventDefault();setCommandOpen(true);return}if(mod&&key===
   const actions=[{label:'Create new block',hint:'N',icon:<CalendarDays size={15}/>,run:newBlock},{label:'Go to today',hint:'T',icon:<CalendarDays size={15}/>,run:()=>setAnchor(new Date())},{label:'Switch to Plan',hint:'1',icon:<Target size={15}/>,run:()=>setLayer('plan')},{label:'Switch to Actual',hint:'2',icon:<Check size={15}/>,run:()=>setLayer('actual')},{label:'Show weekly insights',hint:'I',icon:<BarChart3 size={15}/>,run:()=>showUtility('insights')},{label:'Search blocks',hint:'/',icon:<Search size={15}/>,run:()=>showUtility('search')},{label:'Open settings',hint:'',icon:<Settings2 size={15}/>,run:()=>showUtility('settings')}]
   const menuBlock=eventMenu?renderedBlocks.find(b=>b.id===eventMenu.id):undefined
 
-  if(!store.ready)return <main className="workspace-loading"><span><CalendarDays size={20}/></span><b>Loading your workspace…</b><small>Tempo is securely restoring your latest calendar.</small></main>
+  if(!store.ready)return <AppLoading/>
   return <main className="tempo-app" style={{'--ghost-opacity':data.settings.underlayOpacity/100,'--sidebar-w':`${leftWidth}px`,'--panel-w':`${rightWidth}px`} as React.CSSProperties}>
     {store.syncConflict&&<div className="confirm-backdrop" role="presentation"><div className="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="sync-conflict-title"><AlertTriangle size={20}/><h2 id="sync-conflict-title">Changes overlap on another device</h2><p>Both versions changed {store.syncConflict.paths.length===1?'the same field':`${store.syncConflict.paths.length} of the same fields`}. Independent edits have already been combined. Choose which version wins only for the overlapping changes.</p><footer><button onClick={()=>store.resolveSyncConflict('remote')}>Use server version</button><button className="confirm-danger" onClick={()=>store.resolveSyncConflict('local')}>Keep this device</button></footer></div></div>}
     <AppHeader layer={layer} view={view} range={rangeLabel(dates)} sidebarOpen={sidebarOpen} panel={utilityPanel} planLabel={data.settings.planLabel??'Plan'} actualLabel={data.settings.actualLabel??'Actual'} userFirstName={data.settings.userFirstName} userLastName={data.settings.userLastName} quote={data.currentQuote} hourScale={data.settings.hourScale} onLayer={v=>{editScopeRef.current=null;setLayer(v);setSelectedIds([]);setEventOpen(false);setDraftBlock(null)}} onRenameLayer={(target,name)=>store.patchSettings(target==='plan'?{planLabel:name}:{actualLabel:name})} onView={setView} onToggleSidebar={()=>setSidebarOpen(v=>!v)} onNavigate={navigate} onToday={()=>setAnchor(new Date())} onPanel={showUtility} onCommand={()=>setCommandOpen(true)} onPatchSettings={store.patchSettings} onQuote={store.setQuote} onNextQuote={store.nextQuote} onCopyPlan={copyPlan}/>
