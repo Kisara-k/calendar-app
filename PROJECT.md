@@ -6,7 +6,7 @@
 
 ## What This Is
 
-Tempo is a local-first time-blocking calendar app. Users plan their week in the **Plan** layer and record what actually happened in the **Actual** layer. No backend — all state lives in `localStorage` under the key `tempo-calendar-v2`.
+Tempo is a local-first time-blocking calendar app. Users plan their week in the **Plan** layer and record what actually happened in the **Actual** layer. Email/password-authenticated workspaces persist to normalized, user-scoped Supabase Postgres tables. Per-user browser caches and a durable pending-write queue keep interactions immediate and allow edits to survive transient network failures.
 
 ---
 
@@ -22,6 +22,8 @@ Tempo is a local-first time-blocking calendar app. Users plan their week in the 
 | Color picker | react-colorful |
 | Styling | Single flat CSS file (`app/globals.css`) — no Tailwind |
 | State | Custom hook (`useCalendarStore`) — no external state library |
+| Authentication | Supabase Auth with verified email + password and unique account usernames |
+| Persistence | Supabase Postgres + private Realtime Broadcast, with per-user `localStorage` cache/write queue |
 
 SSR is disabled for the entire app via `dynamic(..., { ssr: false })` in `app/page.tsx` because all state is client-only.
 
@@ -30,7 +32,7 @@ SSR is disabled for the entire app via `dynamic(..., { ssr: false })` in `app/pa
 ## Data Model (`lib/calendar/types.ts`)
 
 ```
-CalendarData (version: 2)          ← root persisted object
+CalendarData (version: 2)          ← in-memory/import-export compatibility model
 ├── blocks: CalendarBlock[]        ← all time blocks
 ├── categories: CalendarCategory[] ← user's calendars (color + visibility)
 ├── groups: CalendarGroup[]        ← tabs that group calendars in the sidebar
@@ -57,6 +59,20 @@ CalendarSettings  — wakeHour, sleepHour, snapMinutes, defaultDuration,
                     autoFormatTitles?
 ```
 
+The database representation is normalized rather than storing this root object as one JSON blob:
+
+```
+accounts           — one row per auth user; settings JSON, quote data, revision/idempotency and logical-usage metadata
+profiles           — account username, normalized email, and effective logical-storage limit
+account_entitlements — administrator-only per-email storage-limit overrides
+groups             — ordered calendar tabs
+calendars          — ordered calendars, visibility/color, and soft-delete timestamp
+recurrence_series  — one recurrence rule per materialized recurring series
+blocks             — events with times stored as compact integer minutes
+```
+
+Workspace/profile tables are scoped by `user_id`; foreign keys preserve group/calendar/series integrity and authenticated-owner RLS protects reads. The administrator-only entitlement table has RLS with no client policy.
+
 ---
 
 ## Core Concepts
@@ -78,13 +94,16 @@ Single custom hook. All mutations go through `commit()`, which:
 
 Undo/redo walk `past`/`future`. Block deletion also shows a 6-second undo toast (`store.undo`). Calendar deletion does NOT use the toast — it moves the calendar to `deletedCalendars` (soft delete, recoverable from Settings).
 
+`commit()` is also the local-first persistence boundary. It updates React state and the per-user cache synchronously, then coalesces changes for 350 ms and computes a normalized row diff against the last acknowledged database snapshot. `apply_patch()` applies that diff atomically and idempotently. Failed writes and their mutation ID remain under per-user pending keys and retry after reconnect, focus, or reload. Private Realtime Broadcast events cause idle clients to refetch; database delay never blocks a UI mutation.
+
 ---
 
 ## Component Tree
 
 ```
 app/page.tsx  (dynamic, ssr:false)
-└── CalendarApp.tsx              ← root; owns all UI state (layer, view, selection, panels, menus)
+├── AuthScreen.tsx               ← sign-in, signup, confirmation guidance, recovery, and configuration gate
+└── CalendarApp.tsx              ← authenticated root; owns all UI state (layer, view, selection, panels, menus)
     ├── AppHeader.tsx            ← layer switch (right-click opens GroupMenu for rename), nav, tools
     ├── Sidebar.tsx              ← mini-calendar, calendar/group list, DnD reorder
     │   └── FloatingMenus.tsx   ← CalendarMenu, GroupMenu, CalendarAreaMenu
@@ -110,6 +129,13 @@ Supporting modules in `lib/calendar/`:
 - `recurrence.ts` — series generation plus scoped update/delete transforms
 - `seed.ts` — demo data loader + normalizer
 - `color-model.ts` — color manipulation utilities
+
+Supabase modules:
+- `hooks/useSupabaseAuth.ts` — persisted email/password session, signup, recovery, password update, and local sign-out
+- `lib/supabase/client.ts` — singleton browser client using the publishable key
+- `lib/supabase/database.ts` — database mapping, snapshot diffing, transactional patch calls, and remote loading
+- `supabase/migrations/20260714000000_database.sql` — normalized workspace schema, constraints, RLS, indexes, initial RPC, and private Broadcast triggers
+- `supabase/migrations/20260714010000_password_auth_and_quotas.sql` — profiles, email entitlements, auth triggers, RPC-only writes, and transactional logical quotas
 
 ---
 
@@ -146,6 +172,19 @@ All three floating context menus (`CalendarMenu`, `GroupMenu`, `EventMenu`) shar
 - Ctrl+Z / Ctrl+Shift+Z traverse full undo/redo history (all `commit()` calls)
 - Undo toast is only for block deletion (surface-level convenience)
 - Calendar soft-delete uses Settings > Recently deleted (persistent recovery)
+- An externally refreshed database snapshot clears local undo/redo history so stale snapshots cannot reverse changes made on another device. Acknowledging this client's own background writes does not clear history.
+
+### Authentication and sync
+- The app is gated by Supabase Auth using verified email and password. Supabase Auth stores bcrypt password hashes; application tables never receive passwords.
+- A unique username is chosen during signup and used as account identity/display metadata. Login remains email + password because Supabase Auth does not natively authenticate usernames; the app does not expose a username-to-email lookup.
+- Confirmation and recovery redirects use the browser origin, allowing allow-listed localhost and production origins to share one Supabase project.
+- Supabase URL and publishable key are public client configuration. Secret/service-role keys must never be exposed to the browser.
+- A first-time account uploads the existing legacy local workspace when the remote account is empty. Existing remote data wins on a new device.
+- Each user's cache, acknowledged base snapshot, unsynced pending snapshot, and pending mutation ID use separate user-ID-qualified `localStorage` keys.
+- Row-level security is the authorization boundary. Client-side `user_id` filters are additionally used for query planning/performance.
+- Authenticated clients have read access but no direct table-write grants. All workspace mutations go through the hardened `apply_patch()` RPC, which derives `user_id` from `auth.uid()`.
+- Each account defaults to a 5 MiB logical calendar-payload quota. The RPC serializes same-user writes, computes usage inside the patch transaction, and rolls the whole patch back when it would exceed the effective per-email entitlement. A rejected local change remains queued in the browser.
+- Soft-deleted calendars remain as calendar rows with `deleted_at`; their blocks stay normalized and are reattached on restore.
 
 ### Tests
 - `npm test` runs persistent Node regression tests. Recurrence tests cover multi-day and daily generation, absolute schedule assignment, immutable canonical anchors, cross-day moves, mixed scoped edits/deletes, all pairs of successive following cuts, and all three-following permutations followed by all-events moves from every source occurrence. Every sequence asserts immutable set identity, stable occurrence ordering, scope boundaries, and delete-all reachability from every surviving occurrence.
