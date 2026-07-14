@@ -1,9 +1,8 @@
 import type { DatabaseSnapshot } from './database'
+import { same } from './rows'
 
 export type MergeResult={snapshot:DatabaseSnapshot;conflicts:string[]}
 
-const canonical=(value:unknown):unknown=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).filter(([,item])=>item!==undefined).sort(([a],[b])=>a.localeCompare(b)).map(([key,item])=>[key,canonical(item)])):value
-const same=(a:unknown,b:unknown)=>JSON.stringify(canonical(a))===JSON.stringify(canonical(b))
 const plainObject=(value:unknown):value is Record<string,unknown>=>Boolean(value)&&typeof value==='object'&&!Array.isArray(value)
 const clone=<T>(value:T):T=>value===undefined?value:structuredClone(value)
 
@@ -28,5 +27,5 @@ function mergeRows<T extends{id:string}>(base:T[],local:T[],remote:T[],path:stri
 
 export function mergeSnapshots(base:DatabaseSnapshot,local:DatabaseSnapshot,remote:DatabaseSnapshot):MergeResult{
   const conflicts:string[]=[]
-  return{snapshot:{revision:remote.revision,account:mergeValue(base.account,local.account,remote.account,'account',conflicts) as DatabaseSnapshot['account'],groups:mergeRows(base.groups,local.groups,remote.groups,'groups',conflicts),calendars:mergeRows(base.calendars,local.calendars,remote.calendars,'calendars',conflicts),series:mergeRows(base.series,local.series,remote.series,'series',conflicts),blocks:mergeRows(base.blocks,local.blocks,remote.blocks,'blocks',conflicts)},conflicts}
+  return{snapshot:{revision:remote.revision,account:mergeValue(base.account,local.account,remote.account,'account',conflicts) as DatabaseSnapshot['account'],groups:mergeRows(base.groups,local.groups,remote.groups,'groups',conflicts),calendars:mergeRows(base.calendars,local.calendars,remote.calendars,'calendars',conflicts),series:mergeRows(base.series,local.series,remote.series,'series',conflicts),blocks:mergeRows(base.blocks,local.blocks,remote.blocks,'blocks',conflicts),blockNotes:mergeRows(base.blockNotes??[],local.blockNotes??[],remote.blockNotes??[],'blockNotes',conflicts)},conflicts}
 }

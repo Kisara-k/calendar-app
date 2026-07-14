@@ -9,7 +9,7 @@ This app uses one Supabase project for authentication, Postgres persistence, and
 - Forgot-password email and password update flow
 - Unique lowercase usernames
 - Normalized, user-owned calendar tables with RLS
-- Local-first caching, queued writes, idempotent retries, and private Realtime refreshes
+- Acknowledged browser caching, durable pending-write delivery, ordered change-only pulls, idempotent retries, and private Realtime pull hints
 - A database-enforced 5 MiB logical calendar-data limit per account
 - Email-specific quota overrides managed only by an administrator
 
@@ -48,9 +48,11 @@ The same two public values may be added to the production hosting provider, so l
 9. Copy the complete contents of `supabase/migrations/20260714030000_consistent_snapshot_reads.sql` and select **Run**.
 10. Create a fifth new query.
 11. Copy the complete contents of `supabase/migrations/20260714040000_revision_broadcasts.sql` and select **Run**.
-12. All five queries should finish with `Success. No rows returned`.
+12. Create a sixth new query.
+13. Copy the complete contents of `supabase/migrations/20260714050000_incremental_sync.sql` and select **Run**.
+14. All six queries should finish with `Success. No rows returned`.
 
-The second migration creates account profiles and quota entitlements, replaces the write RPC with the quota-enforcing version, and removes direct client write privileges. The third adds expected-revision writes and a private mutation ledger so concurrent browsers cannot silently overwrite one another and ambiguous retries remain idempotent. The fourth loads every normalized table and its revision in one consistent database snapshot. The fifth replaces per-row Realtime events with one minimal revision invalidation per committed patch. Do not expose `account_entitlements` or `applied_mutations` through a custom API.
+The second migration creates account profiles and quota entitlements, replaces the write RPC with the quota-enforcing version, and removes direct client write privileges. The third adds expected-revision writes and a private mutation ledger so concurrent browsers cannot silently overwrite one another and ambiguous retries remain idempotent. The fourth loads every normalized table and its revision in one consistent database snapshot. The fifth replaces per-row Realtime events with one minimal revision invalidation per committed patch. The sixth adds per-row revision stamps, ID-only delete tombstones, and the ordered incremental-pull RPC. Do not expose `account_entitlements`, `applied_mutations`, or `workspace_tombstones` through a custom API.
 
 ### CLI method
 

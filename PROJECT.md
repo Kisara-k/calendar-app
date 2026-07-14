@@ -64,15 +64,17 @@ The database representation is normalized rather than storing this root object a
 ```
 accounts           — one row per auth user; settings JSON, quote data, workspace revision and logical-usage metadata
 applied_mutations  — private 30-day mutation ledger for idempotent retry results
+workspace_tombstones — private durable delete cursors for incremental catch-up
 profiles           — account username, normalized email, and effective logical-storage limit
 account_entitlements — administrator-only per-email storage-limit overrides
 groups             — ordered calendar tabs
 calendars          — ordered calendars, visibility/color, and soft-delete timestamp
 recurrence_series  — one recurrence rule per materialized recurring series
 blocks             — events with times stored as compact integer minutes
+block_notes        — independently synchronized non-empty event note text
 ```
 
-Workspace/profile tables are scoped by `user_id`; foreign keys preserve group/calendar/series integrity and authenticated-owner RLS protects reads. The administrator-only entitlement table has RLS with no client policy.
+Workspace/profile tables are scoped by `user_id`; foreign keys preserve group/calendar/series integrity and authenticated-owner RLS protects reads. Every synchronized row carries the last workspace revision that modified it. The administrator-only entitlement and synchronization tombstone tables have RLS with no client policy.
 
 ---
 
@@ -95,9 +97,9 @@ Single custom hook. All mutations go through `commit()`, which:
 
 Undo/redo walk `past`/`future`. Block deletion also shows a 6-second undo toast (`store.undo`). Calendar deletion does NOT use the toast — it moves the calendar to `deletedCalendars` (soft delete, recoverable from Settings).
 
-`commit()` is also the optimistic persistence boundary. It updates React state immediately, writes the latest pending workspace to a per-tab IndexedDB delivery outbox, then coalesces changes for 350 ms (with a 1.5-second maximum wait) and computes a normalized row diff against the last acknowledged database snapshot. `apply_patch()` accepts that snapshot's expected revision, applies the diff atomically, and records the frozen mutation ID in a durable server-side idempotency ledger. The outbox entry is removed only after acknowledgement. Page-hide/close starts an immediate best-effort flush, and a close warning is attached only while edits remain unsaved.
+`commit()` is also the optimistic persistence boundary. It updates React state immediately and writes the latest pending workspace to a per-tab IndexedDB delivery outbox. Non-text edits flush immediately; title/note edits coalesce for 350 ms (with a 1.5-second maximum wait). Shared sparse-diff logic computes only changed fields against the last acknowledged snapshot, and notes map to their own `block_notes` record. `apply_patch()` accepts that snapshot's expected revision, applies the diff atomically, and records the frozen mutation ID in a durable server-side idempotency ledger. The outbox entry is removed only after acknowledgement. Page-hide/close starts an immediate best-effort flush, and a close warning is attached only while edits remain unsaved.
 
-On startup, tabs identify live sibling tabs through `BroadcastChannel` before claiming abandoned outbox records. Abandoned edits are merged with the latest consistent Supabase snapshot using the same deterministic three-way merge as ordinary revision conflicts. Independent field changes rebase automatically; overlapping field edits and delete-versus-edit cases require an explicit server/device choice. This is crash/reload delivery protection, not an offline product contract: the UI is not designed for extended offline use, but a pending edit remains retryable after an interrupted tab. Private Realtime Broadcast events notify other clients; a scalar revision check prevents unnecessary full workspace reads, so database delay never blocks a UI mutation.
+On startup, tabs identify live sibling tabs through `BroadcastChannel` before claiming abandoned outbox records. Abandoned edits are merged with the latest consistent Supabase checkpoint using the same deterministic three-way merge as ordinary revision conflicts. Independent field changes rebase automatically; overlapping field edits and delete-versus-edit cases require an explicit server/device choice. This is crash/reload delivery protection, not an offline product contract: the UI is not designed for extended offline use, but a pending edit remains retryable after an interrupted tab. Private Realtime Broadcast events are content-free pull hints; correctness comes from ordered database deltas, so a missed message is recovered on reconnect, focus, or the next startup without downloading the full workspace.
 
 ---
 
@@ -137,6 +139,8 @@ Supabase modules:
 - `hooks/useSupabaseAuth.ts` — persisted email/password session, signup, recovery, password update, and local sign-out
 - `lib/supabase/client.ts` — singleton browser client using the publishable key
 - `lib/supabase/database.ts` — database mapping, snapshot diffing, transactional patch calls, and consistent remote loading
+- `lib/supabase/rows.ts` / `lib/supabase/write-policy.ts` — reusable sparse-field diffing and immediate/debounced persistence policy
+- `lib/supabase/sync.ts` — strict incremental-delta validation and immutable cache application
 - `lib/supabase/merge.ts` — deterministic field-level three-way merge and overlap detection
 - `lib/supabase/persistence.ts` — IndexedDB acknowledged-snapshot cache and per-tab pending-write delivery outbox
 - `supabase/migrations/20260714000000_database.sql` — normalized workspace schema, constraints, RLS, indexes, initial RPC, and private Broadcast triggers
@@ -144,6 +148,8 @@ Supabase modules:
 - `supabase/migrations/20260714020000_concurrency_safety.sql` — expected-revision writes and durable idempotency ledger
 - `supabase/migrations/20260714030000_consistent_snapshot_reads.sql` — one-transaction normalized workspace reads
 - `supabase/migrations/20260714040000_revision_broadcasts.sql` — one minimal revision invalidation per committed workspace patch
+- `supabase/migrations/20260714050000_incremental_sync.sql` — per-row revision stamps, delete tombstones, and the ordered change-feed RPC
+- `supabase/migrations/20260715000000_sparse_writes_and_notes.sql` — field-level mutation payloads and separate note records
 
 ---
 
@@ -192,17 +198,19 @@ All three floating context menus (`CalendarMenu`, `GroupMenu`, `EventMenu`) shar
 - IndexedDB stores one user-qualified, Supabase-acknowledged snapshot as a disposable warm cache. A separate per-tab outbox stores only the current pending workspace, its merge base, and any frozen mutation identity until Supabase acknowledges it. Abandoned records are recovered and merged on the next app startup; active sibling tabs retain ownership of their records.
 - Row-level security is the authorization boundary. Client-side `user_id` filters are additionally used for query planning/performance.
 - Authenticated clients have read access but no direct table-write grants. All workspace mutations go through the hardened `apply_patch()` RPC, which derives `user_id` from `auth.uid()`, serializes writes for that user, rejects stale expected revisions, and returns the committed revision.
-- Workspace loads use one `get_snapshot()` RPC so the revision and every normalized table are observed from the same PostgreSQL statement snapshot; clients never merge against rows from different commits.
-- Startup, focus, and Realtime invalidations first read only the account revision. The full normalized snapshot is fetched only when no cache exists or that revision changed. Own successful writes update the cache directly and do not re-download the workspace.
+- A browser with no acknowledged cache bootstraps once through `get_snapshot()`, where the revision and every normalized table are observed from the same PostgreSQL statement snapshot. A cache is required to interpret later deltas; if the browser evicts it, one new bootstrap is unavoidable.
+- Cached browsers call `get_changes_since(cursor)`. The workspace revision is an ordered checkpoint, changed rows carry `modified_revision`, and hard deletes leave ID-only tombstones. One statement returns the current checkpoint, final versions of rows changed after the cursor, and deleted IDs. Event metadata and note content are separate rows, so an ordinary event change never transfers its note and a note change never updates its event row.
+- A delta is applied only when its `from_revision` exactly matches the cached revision. Gaps, backwards cursors, and malformed patches fail closed. The client commits the resulting checkpoint and rows to IndexedDB together as the next acknowledged cache.
 - Realtime emits one small private `workspace_changed` message containing only the new revision after each committed patch. It does not broadcast every changed row, preventing recurring/bulk operations from producing redundant messages or exposing row payloads to the notification layer.
-- The complete workspace remains the synchronization unit because recurrence scopes, global search/export, soft-delete restore, and undo require all related rows. Date-window paging would make those existing contracts incomplete; revision validation avoids unnecessary downloads without weakening them.
+- The browser retains a complete acknowledged workspace because recurrence scopes, global search/export, soft-delete restore, and undo require it, but synchronization transfers only changed normalized rows. Realtime messages are intentionally non-durable: reconnect, focus, startup, and stale-write recovery all pull from the durable cursor/tombstone protocol, so message loss cannot create a permanent gap.
 - Applied mutation IDs and payload hashes are retained for 30 days. A retry after a lost response returns the original result, while accidental mutation-ID reuse with a different payload is rejected.
 - Disjoint concurrent edits are merged at field level and retried automatically. Same-field changes and delete-versus-edit conflicts never resolve silently; the app combines all non-overlapping work and asks which version wins only for the overlapping fields.
-- Each account defaults to a 5 MiB logical calendar-payload quota. The RPC serializes same-user writes, computes usage inside the patch transaction, and rolls the whole patch back when it would exceed the effective per-email entitlement. A rejected change remains visible with an error state and stays in the delivery outbox so reducing data or increasing the entitlement can make it retryable.
+- Each account defaults to a 5 MiB logical calendar-payload quota. The RPC serializes same-user writes, adjusts usage from the touched rows inside the patch transaction, and rolls the whole patch back when it would exceed the effective per-email entitlement. A rejected change remains visible with an error state and stays in the delivery outbox so reducing data or increasing the entitlement can make it retryable.
 - Soft-deleted calendars remain as calendar rows with `deleted_at`; their blocks stay normalized and are reattached on restore.
 
 ### Tests
-- `npm test` runs persistent Node regression tests. Recurrence tests cover multi-day and daily generation, absolute schedule assignment, immutable canonical anchors, cross-day moves, mixed scoped edits/deletes, all pairs of successive following cuts, and all three-following permutations followed by all-events moves from every source occurrence. Sync tests cover same-row disjoint edits, same-field conflicts, both conflict choices, delete-versus-edit conflicts, independent-row changes, nested settings merges, and object-order stability.
+- `npm test` runs persistent Node regression tests. Recurrence tests cover multi-day and daily generation, absolute schedule assignment, immutable canonical anchors, cross-day moves, mixed scoped edits/deletes, all pairs of successive following cuts, and all three-following permutations followed by all-events moves from every source occurrence. Sync tests cover strict cursor validation, changed-row replacement, tombstones, collapsed multi-revision pulls, two-browser convergence, same-row disjoint edits, same-field conflicts, both conflict choices, delete-versus-edit conflicts, nested settings merges, and object-order stability.
+- `tests/incremental-sync.sql` is a rollback-only linked-database integration test. It verifies separate event/note delta transfer, field-level event and note updates, idempotent retry, stale-browser rejection, delete tombstones, collapsed insert/delete history, and empty current-cursor pulls without leaving test data behind.
 
 ---
 

@@ -1,0 +1,9 @@
+export type IdentifiedRow={id:string}
+export type SparseRow<T extends IdentifiedRow>=Partial<Omit<T,'id'>>&{id:string}
+
+export const canonical=(value:unknown):unknown=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).filter(([,item])=>item!==undefined).sort(([a],[b])=>a.localeCompare(b)).map(([key,item])=>[key,canonical(item)])):value
+export const same=(a:unknown,b:unknown)=>JSON.stringify(canonical(a))===JSON.stringify(canonical(b))
+export const indexBy=<T extends IdentifiedRow>(items:T[])=>new Map(items.map(item=>[item.id,item]))
+export const replaceRows=<T extends IdentifiedRow>(current:T[],upserts:T[],deletes:string[])=>{const rows=indexBy(current);deletes.forEach(id=>rows.delete(id));upserts.forEach(row=>rows.set(row.id,row));return Array.from(rows.values())}
+export const fullRowChanges=<T extends IdentifiedRow>(before:T[]|null,after:T[])=>{const previous=before?indexBy(before):null,next=indexBy(after),prior=before??[];return{upserts:previous?after.filter(row=>!same(previous.get(row.id),row)):after,deletes:previous?prior.filter(row=>!next.has(row.id)).map(row=>row.id):[]}}
+export const sparseRowChanges=<T extends IdentifiedRow>(before:T[]|null,after:T[])=>{if(!before)return{upserts:after,updates:[] as SparseRow<T>[],deletes:[] as string[]};const previous=indexBy(before),next=indexBy(after),upserts:T[]=[],updates:SparseRow<T>[]=[];after.forEach(row=>{const existing=previous.get(row.id);if(!existing){upserts.push(row);return}const fields=Object.fromEntries(Object.entries(row).filter(([key,value])=>key!=='id'&&!same(existing[key as keyof T],value)));if(Object.keys(fields).length)updates.push({id:row.id,...fields} as SparseRow<T>)});return{upserts,updates,deletes:before.filter(row=>!next.has(row.id)).map(row=>row.id)}}
