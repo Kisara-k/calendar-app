@@ -124,8 +124,8 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
     return null
   }
   const live=preview();const now=new Date();const nowIndex=dates.findIndex(d=>toISO(d)===toISO(now));const nowTime=now.getHours()+now.getMinutes()/60
-  const cardTop=(b:{start:number})=>b.start*hourHeight
-  const cardHeight=(b:{start:number,end:number})=>Math.max(1,(b.end-b.start)*hourHeight-1)
+  const cardTop=(b:{start:number})=>b.start*hourHeight+1
+  const cardHeight=(b:{start:number,end:number})=>Math.max(1,(b.end-b.start)*hourHeight-2)
   const catOf=(b:{categoryId:string})=>categories.find(c=>c.id===b.categoryId)!
 
   return <div className="calendar-surface" style={{'--scrollbar-width':`${scrollbarWidth}px`} as React.CSSProperties}>
