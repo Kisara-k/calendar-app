@@ -1,0 +1,18 @@
+'use client'
+
+import { useCallback, useEffect, useState } from 'react'
+import type { User } from '@supabase/supabase-js'
+import { getSupabase, isSupabaseConfigured } from '@/lib/supabase/client'
+
+export type AuthActionResult={ok:boolean;message:string}
+
+export function useSupabaseAuth(){
+  const [user,setUser]=useState<User|null>(null),[loading,setLoading]=useState(isSupabaseConfigured),[error,setError]=useState(''),[recovering,setRecovering]=useState(false)
+  useEffect(()=>{if(!isSupabaseConfigured)return;const supabase=getSupabase();let active=true;const{data:{subscription}}=supabase.auth.onAuthStateChange((event,session)=>{if(!active)return;setUser(session?.user??null);if(event==='PASSWORD_RECOVERY')setRecovering(true);else if(event==='SIGNED_OUT')setRecovering(false);setLoading(false)});supabase.auth.getSession().then(({data,error:sessionError})=>{if(!active)return;if(sessionError)setError(sessionError.message);setUser(data.session?.user??null);setLoading(false)});return()=>{active=false;subscription.unsubscribe()}},[])
+  const signIn=useCallback(async(email:string,password:string):Promise<AuthActionResult>=>{setError('');const{error:signInError}=await getSupabase().auth.signInWithPassword({email:email.trim().toLowerCase(),password});if(signInError){setError(signInError.message);return{ok:false,message:signInError.message}}return{ok:true,message:''}},[])
+  const signUp=useCallback(async(username:string,email:string,password:string):Promise<AuthActionResult>=>{setError('');const normalizedUsername=username.trim().toLowerCase();if(!/^[a-z0-9][a-z0-9_.-]{2,31}$/.test(normalizedUsername)){const message='Username must be 3–32 characters and use lowercase letters, numbers, dots, dashes, or underscores.';setError(message);return{ok:false,message}}const supabase=getSupabase(),{data:available,error:availabilityError}=await supabase.rpc('username_available',{candidate:normalizedUsername});if(availabilityError){setError(availabilityError.message);return{ok:false,message:availabilityError.message}}if(!available){const message='That username is already taken.';setError(message);return{ok:false,message}}const{data,error:signUpError}=await supabase.auth.signUp({email:email.trim().toLowerCase(),password,options:{data:{username:normalizedUsername},emailRedirectTo:window.location.origin}});if(signUpError){setError(signUpError.message);return{ok:false,message:signUpError.message}}return{ok:true,message:data.session?'Account created.':'Check your email to confirm your account, then sign in.'}},[])
+  const requestPasswordReset=useCallback(async(email:string):Promise<AuthActionResult>=>{setError('');const{error:resetError}=await getSupabase().auth.resetPasswordForEmail(email.trim().toLowerCase(),{redirectTo:window.location.origin});if(resetError){setError(resetError.message);return{ok:false,message:resetError.message}}return{ok:true,message:'If that address has an account, a password reset email is on its way.'}},[])
+  const updatePassword=useCallback(async(password:string):Promise<AuthActionResult>=>{setError('');const{error:updateError}=await getSupabase().auth.updateUser({password});if(updateError){setError(updateError.message);return{ok:false,message:updateError.message}}setRecovering(false);window.history.replaceState({},'',window.location.pathname);return{ok:true,message:'Password updated.'}},[])
+  const signOut=useCallback(async()=>{setError('');setRecovering(false);const{error:signOutError}=await getSupabase().auth.signOut({scope:'local'});if(signOutError)setError(signOutError.message)},[])
+  return{configured:isSupabaseConfigured,user,loading,error,recovering,signIn,signUp,requestPasswordReset,updatePassword,signOut}
+}

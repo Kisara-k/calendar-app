@@ -1,35 +1,45 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { User } from '@supabase/supabase-js'
 import { loadDemoCalendar, normalizeCalendarData } from '@/lib/calendar/seed'
 import type { CalendarBlock, CalendarData, CalendarSettings, Layer } from '@/lib/calendar/types'
 import type { RecurrenceRule, RecurrenceScope } from '@/lib/calendar/types'
 import { applyScopedUpdate, createSeries, removeScoped } from '@/lib/calendar/recurrence'
+import { applyPatch, diffSnapshots, fetchSnapshot, fromDatabaseSnapshot, patchIsEmpty, seedUserNames, toDatabaseSnapshot, type DatabaseSnapshot } from '@/lib/supabase/database'
+import { getSupabase } from '@/lib/supabase/client'
 
 const STORAGE_KEY='tempo-calendar-v2'
 const HISTORY_LIMIT=50
+export type SyncStatus='loading'|'synced'|'pending'|'offline'|'error'|'quota'
 
-export function useCalendarStore() {
+const readCalendar=(key:string)=>{try{const raw=localStorage.getItem(key);if(!raw)return null;const parsed=JSON.parse(raw);return parsed.version===2?normalizeCalendarData(parsed):null}catch{return null}}
+
+export function useCalendarStore(user:User) {
   const [data,setData]=useState<CalendarData>(()=>loadDemoCalendar())
   const dataRef=useRef(data)
   const [ready,setReady]=useState(false)
+  const [syncStatus,setSyncStatus]=useState<SyncStatus>('loading')
   const [past,setPast]=useState<CalendarData[]>([])
   const [future,setFuture]=useState<CalendarData[]>([])
   const [undo,setUndo]=useState<{label:string}|null>(null)
+  const baseRef=useRef<DatabaseSnapshot|null>(null),initializedRef=useRef(false),dirtyRef=useRef(false),inFlightRef=useRef(false),mutationRef=useRef<{target:CalendarData;id:string}|null>(null),flushTimerRef=useRef<number|null>(null),refreshTimerRef=useRef<number|null>(null),flushRef=useRef<()=>void>(()=>{})
+  const keys=useMemo(()=>({cache:`${STORAGE_KEY}:${user.id}`,base:`${STORAGE_KEY}:${user.id}:base`,pending:`${STORAGE_KEY}:${user.id}:pending`,mutation:`${STORAGE_KEY}:${user.id}:mutation`}),[user.id])
 
   useEffect(()=>{dataRef.current=data},[data])
-  useEffect(()=>{
-    try { const raw=localStorage.getItem(STORAGE_KEY);if(raw){const parsed=JSON.parse(raw);if(parsed.version===2)setData(normalizeCalendarData(parsed))} }
-    catch { localStorage.removeItem(STORAGE_KEY) }
-    setReady(true)
-  },[])
-  useEffect(()=>{if(ready)localStorage.setItem(STORAGE_KEY,JSON.stringify(data))},[data,ready])
+  const scheduleFlush=useCallback((delay=350)=>{if(flushTimerRef.current!==null)window.clearTimeout(flushTimerRef.current);flushTimerRef.current=window.setTimeout(()=>flushRef.current(),delay)},[])
+  const markDirty=useCallback((next:CalendarData)=>{dirtyRef.current=true;if(!inFlightRef.current){mutationRef.current=null;localStorage.removeItem(keys.mutation)}setSyncStatus(navigator.onLine?'pending':'offline');localStorage.setItem(keys.cache,JSON.stringify(next));localStorage.setItem(keys.pending,JSON.stringify(next));if(initializedRef.current)scheduleFlush()},[keys,scheduleFlush])
+  const acceptRemote=useCallback((snapshot:DatabaseSnapshot,resetHistory=false)=>{const next=fromDatabaseSnapshot(snapshot);baseRef.current=snapshot;dataRef.current=next;mutationRef.current=null;setData(next);if(resetHistory){setPast([]);setFuture([])}localStorage.setItem(keys.cache,JSON.stringify(next));localStorage.setItem(keys.base,JSON.stringify(next));localStorage.removeItem(keys.pending);localStorage.removeItem(keys.mutation);dirtyRef.current=false;setSyncStatus('synced')},[keys])
+  const flush=useCallback(async()=>{if(!initializedRef.current||inFlightRef.current||!dirtyRef.current)return;const target=dataRef.current,targetSnapshot=toDatabaseSnapshot(target),patch=diffSnapshots(baseRef.current,targetSnapshot);if(patchIsEmpty(patch)){baseRef.current=targetSnapshot;mutationRef.current=null;localStorage.setItem(keys.base,JSON.stringify(target));localStorage.removeItem(keys.pending);localStorage.removeItem(keys.mutation);dirtyRef.current=false;setSyncStatus('synced');return}const mutation=mutationRef.current?.target===target?mutationRef.current:{target,id:crypto.randomUUID()};mutationRef.current=mutation;localStorage.setItem(keys.mutation,mutation.id);inFlightRef.current=true;setSyncStatus(navigator.onLine?'pending':'offline');try{await applyPatch(patch,mutation.id);mutationRef.current=null;localStorage.removeItem(keys.mutation);baseRef.current=targetSnapshot;localStorage.setItem(keys.base,JSON.stringify(target));if(dataRef.current!==target){dirtyRef.current=true;scheduleFlush(0)}else{dirtyRef.current=false;localStorage.removeItem(keys.pending);const remote=await fetchSnapshot(user.id);if(remote&&dataRef.current===target)acceptRemote(remote);else setSyncStatus('synced')}}catch(error){dirtyRef.current=true;const message=typeof error==='object'&&error&&'message' in error?String(error.message):String(error);setSyncStatus(!navigator.onLine?'offline':message.toLowerCase().includes('storage quota exceeded')?'quota':'error')}finally{inFlightRef.current=false;if(dirtyRef.current&&dataRef.current!==target)scheduleFlush(0)}},[acceptRemote,keys,scheduleFlush,user.id])
+  flushRef.current=flush
+  useEffect(()=>{let active=true;initializedRef.current=false;dirtyRef.current=false;setReady(false);setSyncStatus('loading');const pending=readCalendar(keys.pending),userCache=readCalendar(keys.cache),cached=pending??userCache??readCalendar(STORAGE_KEY),local=seedUserNames(cached??loadDemoCalendar(),user),storedBase=readCalendar(keys.base),storedMutation=pending?localStorage.getItem(keys.mutation):null;baseRef.current=storedBase?toDatabaseSnapshot(storedBase):null;mutationRef.current=storedMutation?{target:local,id:storedMutation}:null;dataRef.current=local;setData(local);setReady(Boolean(pending||userCache));dirtyRef.current=Boolean(pending);localStorage.setItem(keys.cache,JSON.stringify(local));void fetchSnapshot(user.id).then(remote=>{if(!active)return;if(!remote){baseRef.current=null;dirtyRef.current=true;localStorage.setItem(keys.pending,JSON.stringify(dataRef.current))}else if(!dirtyRef.current)acceptRemote(remote,true);else if(!baseRef.current)baseRef.current=remote;initializedRef.current=true;setReady(true);if(dirtyRef.current)scheduleFlush(0)}).catch(()=>{if(!active)return;initializedRef.current=true;setReady(true);setSyncStatus(navigator.onLine?'error':'offline');if(dirtyRef.current)scheduleFlush(1000)});return()=>{active=false;initializedRef.current=false;if(flushTimerRef.current!==null)window.clearTimeout(flushTimerRef.current)}},[acceptRemote,keys,scheduleFlush,user.id])
+  useEffect(()=>{const refresh=()=>{if(dirtyRef.current||inFlightRef.current){scheduleFlush(0);return}void fetchSnapshot(user.id).then(remote=>{if(remote)acceptRemote(remote,true)}).catch(()=>setSyncStatus(navigator.onLine?'error':'offline'))},online=()=>{setSyncStatus(dirtyRef.current?'pending':'synced');dirtyRef.current?scheduleFlush(0):refresh()},visibility=()=>{if(document.visibilityState==='visible')refresh()};window.addEventListener('online',online);window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',visibility);const channel=getSupabase().channel(`user:${user.id}`,{config:{private:true}}).on('broadcast',{event:'*'},()=>{if(refreshTimerRef.current!==null)window.clearTimeout(refreshTimerRef.current);refreshTimerRef.current=window.setTimeout(refresh,180)}).subscribe();return()=>{window.removeEventListener('online',online);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',visibility);if(refreshTimerRef.current!==null)window.clearTimeout(refreshTimerRef.current);void getSupabase().removeChannel(channel)}},[acceptRemote,scheduleFlush,user.id])
 
   const commit=useCallback((change:(current:CalendarData)=>CalendarData)=>{
-    setData(current=>{setPast(items=>[...items.slice(-(HISTORY_LIMIT-1)),structuredClone(current)]);setFuture([]);return change(current)})
-  },[])
-  const undoHistory=useCallback(()=>{setPast(items=>{if(!items.length)return items;const previous=items[items.length-1];setFuture(next=>[structuredClone(dataRef.current),...next].slice(0,HISTORY_LIMIT));setData(previous);return items.slice(0,-1)})},[])
-  const redoHistory=useCallback(()=>{setFuture(items=>{if(!items.length)return items;const next=items[0];setPast(previous=>[...previous,structuredClone(dataRef.current)].slice(-HISTORY_LIMIT));setData(next);return items.slice(1)})},[])
+    setData(current=>{setPast(items=>[...items.slice(-(HISTORY_LIMIT-1)),structuredClone(current)]);setFuture([]);const next=change(current);dataRef.current=next;markDirty(next);return next})
+  },[markDirty])
+  const undoHistory=useCallback(()=>{setPast(items=>{if(!items.length)return items;const previous=items[items.length-1];setFuture(next=>[structuredClone(dataRef.current),...next].slice(0,HISTORY_LIMIT));dataRef.current=previous;markDirty(previous);setData(previous);return items.slice(0,-1)})},[markDirty])
+  const redoHistory=useCallback(()=>{setFuture(items=>{if(!items.length)return items;const next=items[0];setPast(previous=>[...previous,structuredClone(dataRef.current)].slice(-HISTORY_LIMIT));dataRef.current=next;markDirty(next);setData(next);return items.slice(1)})},[markDirty])
 
   const addBlock=useCallback((block:CalendarBlock)=>commit(v=>({...v,blocks:[...v.blocks,block]})),[commit])
   const addBlocks=useCallback((blocks:CalendarBlock[])=>commit(v=>({...v,blocks:[...v.blocks,...blocks]})),[commit])
@@ -63,5 +73,5 @@ export function useCalendarStore() {
   const replaceData=useCallback((next:CalendarData)=>{if(next.version!==2||!Array.isArray(next.blocks)||!Array.isArray(next.categories))throw new Error('Unsupported calendar file');commit(()=>normalizeCalendarData(next))},[commit])
   const undoDelete=useCallback(()=>{undoHistory();setUndo(null)},[undoHistory])
 
-  return useMemo(()=>({data,ready,undo,setUndo,canUndo:past.length>0,canRedo:future.length>0,undoHistory,redoHistory,undoDelete,addBlock,addBlocks,createBlock,updateBlock,updateRecurringBlock,updateBlocks,deleteBlocks,deleteRecurringBlock,setBlockRecurrence,patchSettings,toggleCategory,toggleGroup,reorderCategories,moveCategoryToGroup,applyCategoryLayout,reorderGroups,renameGroup,createGroup,renameCategory,createCategory,colorCategory,setDefaultCategory,deleteCategory,restoreCategory,mergeCategory,setQuote,nextQuote,copyPlanToActual,reset,replaceData}),[data,ready,undo,past.length,future.length,undoHistory,redoHistory,undoDelete,addBlock,addBlocks,createBlock,updateBlock,updateRecurringBlock,updateBlocks,deleteBlocks,deleteRecurringBlock,setBlockRecurrence,patchSettings,toggleCategory,toggleGroup,reorderCategories,moveCategoryToGroup,applyCategoryLayout,reorderGroups,renameGroup,createGroup,renameCategory,createCategory,colorCategory,setDefaultCategory,deleteCategory,restoreCategory,mergeCategory,setQuote,nextQuote,copyPlanToActual,reset,replaceData])
+  return useMemo(()=>({data,ready,syncStatus,undo,setUndo,canUndo:past.length>0,canRedo:future.length>0,undoHistory,redoHistory,undoDelete,addBlock,addBlocks,createBlock,updateBlock,updateRecurringBlock,updateBlocks,deleteBlocks,deleteRecurringBlock,setBlockRecurrence,patchSettings,toggleCategory,toggleGroup,reorderCategories,moveCategoryToGroup,applyCategoryLayout,reorderGroups,renameGroup,createGroup,renameCategory,createCategory,colorCategory,setDefaultCategory,deleteCategory,restoreCategory,mergeCategory,setQuote,nextQuote,copyPlanToActual,reset,replaceData}),[data,ready,syncStatus,undo,past.length,future.length,undoHistory,redoHistory,undoDelete,addBlock,addBlocks,createBlock,updateBlock,updateRecurringBlock,updateBlocks,deleteBlocks,deleteRecurringBlock,setBlockRecurrence,patchSettings,toggleCategory,toggleGroup,reorderCategories,moveCategoryToGroup,applyCategoryLayout,reorderGroups,renameGroup,createGroup,renameCategory,createCategory,colorCategory,setDefaultCategory,deleteCategory,restoreCategory,mergeCategory,setQuote,nextQuote,copyPlanToActual,reset,replaceData])
 }
