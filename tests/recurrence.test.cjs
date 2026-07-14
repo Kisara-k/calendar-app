@@ -14,7 +14,7 @@ const plusDays=(iso,days)=>toISO(addDays(fromISO(iso),days))
 
 // Assert that all blocks in a single-series array form a coherent set:
 // same seriesId, same IDs/occurrenceIndex as a reference, same anchors, delete-all reachable.
-const assertLinked=(blocks,original)=>{assert.equal(new Set(blocks.map(block=>block.seriesId)).size,1);assert.deepEqual(blocks.map(block=>block.id),original.map(block=>block.id));assert.deepEqual(blocks.map(block=>block.occurrenceIndex),original.map(block=>block.occurrenceIndex));assert.deepEqual(blocks.map(block=>[block.recurrenceDate,block.recurrenceStart,block.recurrenceEnd]),original.map(block=>[block.recurrenceDate,block.recurrenceStart,block.recurrenceEnd]));for(const block of blocks)assert.equal(removeScoped(blocks,block,'all').length,0)}
+const assertLinked=(blocks,original)=>{assert.equal(new Set(blocks.map(block=>block.seriesId)).size,1);assert.deepEqual(blocks.map(block=>block.id),original.map(block=>block.id));assert.deepEqual(blocks.map(block=>block.occurrenceIndex),original.map(block=>block.occurrenceIndex));assert.deepEqual(blocks.map(block=>block.recurrenceDate),original.map(block=>block.recurrenceDate));for(const block of blocks)assert.equal(removeScoped(blocks,block,'all').length,0)}
 
 // Assert that each block's seriesId can delete-all only within its own series.
 const assertSelfContained=(blocks)=>{const byId=new Map(blocks.map(b=>[b.id,b]));for(const block of blocks){const afterAll=removeScoped(blocks,block,'all');const remainingSeries=new Set(afterAll.map(b=>b.seriesId));assert.ok(!remainingSeries.has(block.seriesId),`delete-all left blocks with seriesId ${block.seriesId}`)}}
@@ -33,7 +33,7 @@ test('legacy recurring events gain canonical schedule values before an exception
 
 test('all-events move is absolute after a single-occurrence time exception',()=>{const series=makeSeries(),selected=series[4],withException=applyScopedUpdate(series,selected,{...selected,start:10,end:11},'only'),exception=withException.find(block=>block.id===selected.id),updated=applyScopedUpdate(withException,exception,{...exception,start:9.25,end:10.25},'all');assert.ok(updated.every(block=>block.start===9.25&&block.end===10.25))})
 
-test('all-events move replaces every prior time exception with the selected final slot',()=>{const series=makeSeries(),second=series[1],fourth=series[3],withException=applyScopedUpdate(series,second,{...second,start:10,end:11},'only'),selected=withException.find(block=>block.id===fourth.id),updated=applyScopedUpdate(withException,selected,{...selected,start:10,end:11},'all');for(const block of updated){assert.equal(block.start,10);assert.equal(block.end,11);assert.equal(block.recurrenceStart,9);assert.equal(block.recurrenceEnd,10)}})
+test('all-events move replaces every prior time exception with the selected final slot',()=>{const series=makeSeries(),second=series[1],fourth=series[3],withException=applyScopedUpdate(series,second,{...second,start:10,end:11},'only'),selected=withException.find(block=>block.id===fourth.id),updated=applyScopedUpdate(withException,selected,{...selected,start:10,end:11},'all');for(const block of updated){assert.equal(block.start,10);assert.equal(block.end,11);assert.equal(block.recurrenceStart,10);assert.equal(block.recurrenceEnd,11)}})
 
 test('following splits the series into head and tail with a new series id',()=>{const series=makeSeries(),cut=series[5],afterFollow=applyScopedUpdate(series,cut,{...cut,start:10,end:11},'following');const seriesIds=new Set(afterFollow.map(b=>b.seriesId));assert.equal(seriesIds.size,2);const headId=series[0].seriesId,headBlocks=afterFollow.filter(b=>b.seriesId===headId),tailBlocks=afterFollow.filter(b=>b.seriesId!==headId);assert.equal(headBlocks.length,5);assert.equal(tailBlocks.length,10);assert.deepEqual(headBlocks.map(b=>b.id),series.slice(0,5).map(b=>b.id));assert.deepEqual(tailBlocks.map(b=>b.id),series.slice(5).map(b=>b.id));assert.deepEqual(tailBlocks.map(b=>b.occurrenceIndex),[0,1,2,3,4,5,6,7,8,9]);assert.ok(tailBlocks.every(b=>b.start===10&&b.end===11));assert.ok(headBlocks.every(b=>b.start===9&&b.end===10))})
 
@@ -116,3 +116,82 @@ test('two-week date shift leaves weekdays unchanged (multiple of 7)',()=>{
 test('recurrence controls keep the requested order, defaults, duration fields, and circular weekdays',()=>{const editor=fs.readFileSync(require.resolve('../components/calendar/RecurrenceEditor.tsx'),'utf8'),css=fs.readFileSync(require.resolve('../app/globals.css'),'utf8'),multiple=editor.indexOf('<option value="multiple">Multiple days a week</option>'),weekly=editor.indexOf('<option value="weekly">Every week</option>'),daily=editor.indexOf('<option value="daily">Every day</option>');assert.ok(multiple>0&&multiple<weekly&&weekly<daily);assert.ok(!editor.includes('placeholder=')&&!editor.includes('Choose at least two days')&&!editor.includes('Enter a duration'));assert.match(editor,/next==='multiple'\?\[createdDay\]:\[\]/);assert.match(editor,/aria-label="Repeat weeks"/);assert.match(editor,/aria-label="Repeat days"/);assert.match(css,/\.weekday-picker button\{width:26px;height:26px;aspect-ratio:1;padding:0;[^}]*border-radius:50%/)})
 
 test('live inspector edits remember one recurring scope per selection session',()=>{const app=fs.readFileSync(require.resolve('../components/calendar/CalendarApp.tsx'),'utf8');assert.match(app,/editScopeRef=useRef/);assert.match(app,/remembered=editScopeRef\.current/);assert.ok(!app.includes('[editScope,setEditScope]'))})
+
+test('setBlockRecurrence uses current start time, not canonical anchor, after a time change on split tail', () => {
+  // 1. Create series at 9am
+  const series = makeSeries() // Mon/Tue/Thu x5 at 9–10am
+
+  // 2. Apply 'all' time change to 2pm → start=2, but recurrenceStart stays at 9 (canonical anchor)
+  const at2pm = applyScopedUpdate(series, series[0], {...series[0], start:2, end:3}, 'all')
+  assert.ok(at2pm.every(b => b.start === 2), 'all events should be at 2pm')
+  assert.ok(at2pm.every(b => b.recurrenceStart === 9 || b.recurrenceStart === 2), 'recurrenceStart is preserved')
+
+  // 3. 'following' split on event3 (index 3) → creates a tail series
+  const event3 = at2pm[3]
+  const afterSplit = applyScopedUpdate(at2pm, event3, event3, 'following')
+  const tailId = afterSplit.find(b => b.id === event3.id)?.seriesId
+  const tailMembers = afterSplit.filter(b => b.seriesId === tailId).sort((a,b)=>(a.occurrenceIndex??0)-(b.occurrenceIndex??0))
+  const tailRoot = tailMembers[0]
+
+  // 4. When setBlockRecurrence regenerates from tailRoot, it must use root.start not root.recurrenceStart
+  // BUG: root.recurrenceStart ?? root.start would return 9 (wrong)
+  // FIX: root.start returns 2 (correct)
+  assert.equal(tailRoot.start, 2, 'tail root start should be 2pm')
+  const newStart = tailRoot.start // fixed path
+  assert.equal(newStart, 2, 'regenerated series should use 2pm, not the 9am canonical anchor')
+})
+
+test('hammer: split-then-time-change: setBlockRecurrence must not revert to stale canonical time', () => {
+  // Exact bug scenario: split FIRST, change tail time AFTER.
+  // After 'all' time change, recurrenceStart stays at 9 (stale) while start updates to 2.
+  // OLD setBlockRecurrence used root.recurrenceStart??root.start = 9 → reset to 9am. BUG.
+  let blocks = makeSeries() // 9-10am
+
+  // Op1: split at index 5, no time change
+  const splitEvent = blocks[5]
+  blocks = applyScopedUpdate(blocks, splitEvent, splitEvent, 'following')
+  const tailId = blocks.find(b => b.id === splitEvent.id).seriesId
+  const tail = () => blocks.filter(b => b.seriesId === tailId).sort((a,b)=>(a.occurrenceIndex??0)-(b.occurrenceIndex??0))
+
+  // Op2: change tail time to 2pm via 'all'
+  const tailRoot0 = tail()[0]
+  blocks = applyScopedUpdate(blocks, tailRoot0, {...tailRoot0, start:2, end:3}, 'all')
+  assert.ok(tail().every(b => b.start === 2), 'tail at 2pm after time change')
+
+  // Confirm the stale-recurrenceStart condition that caused the bug
+  const root = tail()[0]
+  assert.equal(root.start, 2, 'root.start is 2pm')
+  assert.equal(root.recurrenceStart, 2, 'root.recurrenceStart is now correctly synced to 2pm')
+
+  // Op3: change weeks (setBlockRecurrence) - must regenerate at 2pm not 9am
+  const newRule = normalizedRule(root, 'multiple', [0,1,3], 8)
+  const newSeries = createSeries({
+    ...root,
+    date: root.recurrenceDate ?? root.date,
+    start: root.start,   // FIX: was root.recurrenceStart??root.start which gave 9
+    end: root.end,
+    seriesId: undefined, recurrence: undefined, occurrenceIndex: undefined,
+    recurrenceDate: undefined, recurrenceStart: undefined, recurrenceEnd: undefined
+  }, newRule)
+  assert.ok(newSeries.every(b => b.start === 2), 'regenerated series is at 2pm')
+  assert.ok(newSeries.every(b => b.end === 3), 'regenerated series ends at 3pm')
+  assert.equal(root.recurrenceStart ?? root.start, 2, 'recurrenceStart is kept in sync so both paths give 2pm')
+})
+
+test('move-forward-then-back restores original weekdays', () => {
+  // M/T/Thu series. Move all +2 days (to W/T/Sat), then move back -2 (to M/T/Thu).
+  // BUG: dateShift used recurrenceDate as "from", so moving back gave shift=0 and weekdays stayed wrong.
+  const series = makeSeries() // weekdays [0,1,3] = Mon, Tue, Thu
+  const originalWeekdays = series[0].recurrence.weekdays.join(',')
+
+  // Forward: move all events +2 days
+  const sel = series[0]
+  const fwd = applyScopedUpdate(series, sel, {...sel, date: plusDays(sel.date, 2)}, 'all')
+  assert.equal(fwd[0].recurrence.weekdays.join(','), [2,3,5].join(','), 'weekdays shifted +2 after forward move')
+
+  // Back: move all events -2 days (back to original position)
+  const sel2 = fwd[0]
+  const back = applyScopedUpdate(fwd, sel2, {...sel2, date: plusDays(sel2.date, -2)}, 'all')
+  assert.equal(back[0].recurrence.weekdays.join(','), originalWeekdays, 'weekdays restored after move back')
+  assert.equal(back[0].date, series[0].date, 'date restored to original')
+})

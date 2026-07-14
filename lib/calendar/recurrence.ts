@@ -82,8 +82,9 @@ export function applyScopedUpdate(blocks:CalendarBlock[],original:CalendarBlock,
   const startChanged=original.start!==next.start
   const endChanged=original.end!==next.end
   const dateShift=dateChanged?daysBetween(original.recurrenceDate??original.date,next.date):0
+  const weekdayShift=dateChanged?daysBetween(original.date,next.date):0
   const fieldChanges=recurringFieldChanges(original,next)
-  const updatedRecurrence=dateChanged&&original.recurrence?shiftWeekdays(original.recurrence,dateShift):null
+  const updatedRecurrence=dateChanged&&original.recurrence?shiftWeekdays(original.recurrence,weekdayShift):null
 
   if(scope==='following'){
     const newSeriesId=crypto.randomUUID()
@@ -110,7 +111,7 @@ export function applyScopedUpdate(blocks:CalendarBlock[],original:CalendarBlock,
     const date=dateChanged?moveDate(canonical.recurrenceDate!,dateShift):canonical.date
     const start=startChanged?next.start:canonical.start
     const end=endChanged?next.end:canonical.end
-    return {...canonical,...fieldChanges,date,start,end,seriesId:original.seriesId,occurrenceIndex:index,recurrenceDate:canonical.recurrenceDate,recurrenceStart:canonical.recurrenceStart,recurrenceEnd:canonical.recurrenceEnd,...(updatedRecurrence?{recurrence:updatedRecurrence}:{})}
+    return {...canonical,...fieldChanges,date,start,end,seriesId:original.seriesId,occurrenceIndex:index,recurrenceDate:canonical.recurrenceDate,recurrenceStart:startChanged?start:canonical.recurrenceStart,recurrenceEnd:endChanged?end:canonical.recurrenceEnd,...(updatedRecurrence?{recurrence:updatedRecurrence}:{})}
   })
 }
 
