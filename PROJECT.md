@@ -114,7 +114,7 @@ app/page.tsx  (dynamic, ssr:false)
     │   └── FloatingMenus.tsx   ← CalendarMenu, GroupMenu, CalendarAreaMenu
     ├── CalendarToolbar.tsx      ← quote editor, density, copy-plan-to-actual
     ├── WeekGrid.tsx / MonthView.tsx  ← main grid; drag-to-create, drag-to-move, resize
-    ├── EventCard.tsx            ← rendered block on the grid
+    ├── EventCard.tsx            ← rendered block and drag-creation preview on the grid
     ├── EventInspector.tsx       ← right panel when a block is selected
     │   └── RecurrenceEditor.tsx ← daily/weekly/multiple-days repeat controls
     ├── RecurrenceScopeDialog.tsx ← recurring edit/move/resize/delete scope picker
