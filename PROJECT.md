@@ -131,6 +131,7 @@ Supporting modules in `lib/calendar/`:
 - `types.ts` — all TypeScript types
 - `constants.ts` — color palette, default settings
 - `date.ts` — date helpers (formatTime, weekDates, toISO, etc.)
+- `layout.ts` — timed-event overlap lanes, including Notion-style thin-event overlays
 - `recurrence.ts` — series generation plus scoped update/delete transforms
 - `seed.ts` — demo data loader + normalizer
 - `color-model.ts` — color manipulation utilities
@@ -187,6 +188,10 @@ All three floating context menus (`CalendarMenu`, `GroupMenu`, `EventMenu`) shar
 - Undo toast is only for block deletion (surface-level convenience)
 - Calendar soft-delete uses Settings > Recently deleted (persistent recovery)
 - An externally refreshed database snapshot clears local undo/redo history so stale snapshots cannot reverse changes made on another device. Acknowledging this client's own background writes does not clear history.
+
+### Timed-event layout
+- Overlapping substantial events divide the day into side-by-side lanes.
+- An event no more than 75% as long as an event it overlaps renders across nearly the full day width instead of narrowing the longer event for its entire duration. Shorter events that overlap one another still split into separate overlay lanes.
 
 ### Authentication and sync
 - The app is gated by Supabase Auth using verified email and password. Supabase Auth stores bcrypt password hashes; application tables never receive passwords.
