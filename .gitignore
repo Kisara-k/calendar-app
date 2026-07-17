@@ -7,4 +7,5 @@ docs/
 .env.local
 .supabase_cli
 supabase/.temp/
+next-env.d.ts
 tsconfig.tsbuildinfo
