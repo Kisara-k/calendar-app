@@ -13,5 +13,5 @@ export default function Home() {
   const auth=useSupabaseAuth()
   if(auth.configured&&auth.loading)return <AppLoading/>
   if(!auth.configured||!auth.user||auth.recovering)return <AuthScreen configured={auth.configured} loading={false} error={auth.error} recovery={auth.recovering} onSignIn={auth.signIn} onSignUp={auth.signUp} onForgot={auth.requestPasswordReset} onUpdatePassword={auth.updatePassword}/>
-  return <CalendarApp user={auth.user} onSignOut={auth.signOut}/>
+  return <CalendarApp key={auth.user.id} user={auth.user} onSignOut={auth.signOut}/>
 }

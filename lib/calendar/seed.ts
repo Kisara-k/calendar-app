@@ -22,3 +22,9 @@ export function loadDemoCalendar(): CalendarData {
   const blocks=eventTemplates.map((template,index)=>({...template,id:`demo-${template.layer}-${index+1}`,date:toISO(addDays(week,template.weekday))}))
   return {...base,blocks} as CalendarData
 }
+
+export function loadEmptyCalendar(): CalendarData {
+  if (!isCalendarData(demoCalendar)) throw new Error('The bundled demo calendar is invalid')
+  const base=structuredClone(demoCalendar) as CalendarData
+  return {...base,blocks:[],categories:[],groups:[],quoteBank:[],currentQuote:'',deletedCalendars:[],settings:{...base.settings,defaultCategoryId:''}}
+}

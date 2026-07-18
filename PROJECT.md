@@ -108,7 +108,7 @@ On startup, tabs identify live sibling tabs through `BroadcastChannel` before cl
 ```
 app/page.tsx  (dynamic, ssr:false)
 ├── AuthScreen.tsx               ← sign-in, signup, confirmation guidance, recovery, and configuration gate
-└── CalendarApp.tsx              ← authenticated root; owns all UI state (layer, view, selection, panels, menus)
+└── CalendarApp.tsx              ← authenticated root; owns UI state and keeps the cached/empty workspace visible during locked hydration
     ├── AppHeader.tsx            ← layer switch (right-click opens GroupMenu for rename), nav, tools
     ├── Sidebar.tsx              ← mini-calendar, calendar/group list, DnD reorder
     │   └── FloatingMenus.tsx   ← CalendarMenu, GroupMenu, CalendarAreaMenu
@@ -197,7 +197,7 @@ All three floating context menus (`CalendarMenu`, `GroupMenu`, `EventMenu`) shar
 - The app is gated by Supabase Auth using verified email and password. Supabase Auth stores bcrypt password hashes; application tables never receive passwords.
 - A unique username is chosen during signup and used as account identity/display metadata. Login remains email + password because Supabase Auth does not natively authenticate usernames; the app does not expose a username-to-email lookup.
 - Confirmation and recovery redirects use the browser origin, allowing allow-listed localhost and production origins to share one Supabase project.
-- Initial session restoration, dynamic application loading, and workspace validation share one continuous `AppLoading` screen. The sign-in form is rendered only after Supabase confirms there is no persisted user, preventing both false login flashes and blank transitions during refresh in development, preview, or production deployments.
+- Initial session restoration and dynamic application loading use `AppLoading`; the sign-in form is rendered only after Supabase confirms there is no persisted user, preventing a false login flash. Once authenticated, `CalendarApp` always renders the calendar workspace: it begins from a neutral empty model, displays the IndexedDB cache as soon as it is available, and shows a loading toast while server validation and outbox recovery finish. Calendar interactions and store commits remain disabled during that hydration window so late-arriving data cannot overwrite user edits.
 - Supabase URL and publishable key are public client configuration. Secret/service-role keys must never be exposed to the browser.
 - A first-time account starts from the demo workspace and immediately creates its authoritative Supabase workspace. There is no pre-Supabase data migration path because the application has no legacy users.
 - IndexedDB stores one user-qualified, Supabase-acknowledged snapshot as a disposable warm cache. A separate per-tab outbox stores only the current pending workspace, its merge base, and any frozen mutation identity until Supabase acknowledges it. Abandoned records are recovered and merged on the next app startup; active sibling tabs retain ownership of their records.
