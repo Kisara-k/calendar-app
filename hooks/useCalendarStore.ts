@@ -1027,6 +1027,9 @@ export function useCalendarStore(user: User) {
               v.settings.defaultCategoryId === id
                 ? fallback
                 : v.settings.defaultCategoryId,
+            insightsExcludedCategoryIds: (
+              v.settings.insightsExcludedCategoryIds ?? []
+            ).filter((categoryId) => categoryId !== id),
           },
         };
       }),
@@ -1052,20 +1055,26 @@ export function useCalendarStore(user: User) {
   );
   const mergeCategory = useCallback(
     (sourceId: string, targetId: string) =>
-      commit((v) => ({
-        ...v,
-        categories: v.categories.filter((c) => c.id !== sourceId),
-        blocks: v.blocks.map((b) =>
-          b.categoryId === sourceId ? { ...b, categoryId: targetId } : b,
-        ),
-        settings: {
-          ...v.settings,
-          defaultCategoryId:
-            v.settings.defaultCategoryId === sourceId
-              ? targetId
-              : v.settings.defaultCategoryId,
-        },
-      })),
+      commit((v) => {
+        const excluded = new Set(v.settings.insightsExcludedCategoryIds ?? []);
+        if (excluded.has(sourceId)) excluded.add(targetId);
+        excluded.delete(sourceId);
+        return {
+          ...v,
+          categories: v.categories.filter((c) => c.id !== sourceId),
+          blocks: v.blocks.map((b) =>
+            b.categoryId === sourceId ? { ...b, categoryId: targetId } : b,
+          ),
+          settings: {
+            ...v.settings,
+            defaultCategoryId:
+              v.settings.defaultCategoryId === sourceId
+                ? targetId
+                : v.settings.defaultCategoryId,
+            insightsExcludedCategoryIds: Array.from(excluded),
+          },
+        };
+      }),
     [commit],
   );
   const setQuote = useCallback(

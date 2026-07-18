@@ -56,7 +56,7 @@ CalendarGroup     — id, name
 CalendarSettings  — wakeHour, sleepHour, snapMinutes, defaultDuration,
                     hourScale, showWeekends, timeFormat, underlayOpacity,
                     defaultCategoryId, planLabel?, actualLabel?,
-                    autoFormatTitles?
+                    autoFormatTitles?, insightsExcludedCategoryIds?
 ```
 
 The database representation is normalized rather than storing this root object as one JSON blob:
@@ -119,8 +119,8 @@ app/page.tsx  (dynamic, ssr:false)
     │   └── RecurrenceEditor.tsx ← daily/weekly/multiple-days repeat controls
     ├── RecurrenceScopeDialog.tsx ← recurring edit/move/resize/delete scope picker
     ├── FloatingMenus.tsx        ← EventMenu (right-click on block)
-    ├── InsightsPanel.tsx        ← weekly stats panel
-    ├── SettingsPanel.tsx        ← settings + import/export JSON + recently deleted
+    ├── InsightsPanel.tsx        ← weekly stats panel; omits calendars excluded in settings from every metric
+    ├── SettingsPanel.tsx        ← settings, collapsed weekly-insights exclusions via the shared grouped calendar list, import/export JSON, recently deleted
     ├── SearchPanel.tsx
     ├── ShortcutsPanel.tsx
     ├── CommandPalette.tsx       ← ⌘K palette
