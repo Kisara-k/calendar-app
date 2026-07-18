@@ -1,7 +1,7 @@
 'use client'
 
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Copy } from 'lucide-react'
 import { DAY_NAMES } from '@/lib/calendar/constants'
 import { addDays, formatTime, fromISO, snapTime, toISO } from '@/lib/calendar/date'
 import { overlapLayout } from '@/lib/calendar/layout'
@@ -14,11 +14,11 @@ type Interaction =
   | {type:'resize';pointerId:number;originX:number;originY:number;block:CalendarBlock;end:number;moved:boolean}
   | {type:'select';pointerId:number;originX:number;originY:number;x1:number;y1:number;x2:number;y2:number;moved:boolean}
 
-type Props={dates:Date[];blocks:CalendarBlock[];categories:CalendarCategory[];settings:CalendarSettings;layer:Layer;selectedIds:string[];onSelect:(id:string,additive:boolean)=>void;onSelectMany:(ids:string[])=>void;onClearSelection:()=>void;onCreate:(b:Omit<CalendarBlock,'id'>)=>CalendarBlock;onUpdate:(b:CalendarBlock,action:'move'|'resize')=>void;onUpdateMany:(b:CalendarBlock[])=>void;onOpen:(id:string)=>void;onEventContext:(id:string,x:number,y:number)=>void}
+type Props={dates:Date[];blocks:CalendarBlock[];categories:CalendarCategory[];settings:CalendarSettings;layer:Layer;selectedIds:string[];onSelect:(id:string,additive:boolean)=>void;onSelectMany:(ids:string[])=>void;onClearSelection:()=>void;onCreate:(b:Omit<CalendarBlock,'id'>)=>CalendarBlock;onUpdate:(b:CalendarBlock,action:'move'|'resize')=>void;onUpdateMany:(b:CalendarBlock[])=>void;onOpen:(id:string)=>void;onEventContext:(id:string,x:number,y:number)=>void;onCopyPlanDay:(date:string)=>void}
 
 const clamp=(n:number,min:number,max:number)=>Math.max(min,Math.min(max,n))
 
-export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onSelect,onSelectMany,onClearSelection,onCreate,onUpdate,onUpdateMany,onOpen,onEventContext}:Props){
+export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onSelect,onSelectMany,onClearSelection,onCreate,onUpdate,onUpdateMany,onOpen,onEventContext,onCopyPlanDay}:Props){
   const hourHeight=60*(settings.hourScale??1)
   const scrollRef=useRef<HTMLDivElement>(null)
   const columnsRef=useRef<HTMLDivElement>(null)
@@ -117,7 +117,7 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
   const catOf=(b:{categoryId:string})=>categories.find(c=>c.id===b.categoryId)!
 
   return <div className="calendar-surface" style={{'--scrollbar-width':`${scrollbarWidth}px`} as React.CSSProperties}>
-    <div className="day-header-grid" style={{'--day-count':dates.length} as React.CSSProperties}><div className="zone-header">GMT+5:30</div>{dates.map(d=><div className={`day-header ${toISO(d)===toISO(new Date())?'today':''}`} key={toISO(d)}><span>{DAY_NAMES[(d.getDay()+6)%7]}</span><b>{d.getDate()}</b></div>)}<div className="scrollbar-spacer" style={scrollbarWidth===0?{display:'none'}:undefined}/></div>
+    <div className="day-header-grid" style={{'--day-count':dates.length} as React.CSSProperties}><div className="zone-header">GMT+5:30</div>{dates.map(d=>{const date=toISO(d);return <div className={`day-header ${date===toISO(new Date())?'today':''}`} key={date}><span>{DAY_NAMES[(d.getDay()+6)%7]}</span><b>{d.getDate()}</b>{layer==='actual'&&<button className="fill-plan-day" aria-label={`Fill ${DAY_NAMES[(d.getDay()+6)%7]} from plan`} title="Fill this day from plan" onClick={()=>onCopyPlanDay(date)}><Copy size={11}/></button>}</div>})}<div className="scrollbar-spacer" style={scrollbarWidth===0?{display:'none'}:undefined}/></div>
     <div className="all-day-grid" style={{'--day-count':dates.length} as React.CSSProperties}><button className="all-day-label">All-day <ChevronDown size={10}/></button>{dates.map(d=><div className="all-day-cell" key={toISO(d)}>{allDay.filter(b=>b.date===toISO(d)).map(b=><button key={b.id} onClick={()=>onOpen(b.id)}>{b.title}</button>)}</div>)}<div className="scrollbar-spacer" style={scrollbarWidth===0?{display:'none'}:undefined}/></div>
     <div className="time-scroll" ref={scrollRef}>
       <div className="time-canvas" style={{height:24*hourHeight}}>

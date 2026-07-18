@@ -60,6 +60,7 @@ export type CalendarSettings = {
   planLabel?: string
   actualLabel?: string
   autoFormatTitles?: boolean
+  insightsExcludedCategoryIds?: string[]
   userFirstName?: string
   userLastName?: string
 }

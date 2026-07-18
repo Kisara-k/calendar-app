@@ -56,7 +56,7 @@ CalendarGroup     — id, name
 CalendarSettings  — wakeHour, sleepHour, snapMinutes, defaultDuration,
                     hourScale, showWeekends, timeFormat, underlayOpacity,
                     defaultCategoryId, planLabel?, actualLabel?,
-                    autoFormatTitles?
+                    autoFormatTitles?, insightsExcludedCategoryIds?
 ```
 
 The database representation is normalized rather than storing this root object as one JSON blob:
@@ -80,7 +80,7 @@ Workspace/profile tables are scoped by `user_id`; foreign keys preserve group/ca
 
 ## Core Concepts
 
-- **Layers** — Plan (intent) vs Actual (reality). Toggled in `AppHeader`. Blocks belong to one layer. "Copy Plan to Actual" bulk-copies unmatched blocks.
+- **Layers** — Plan (intent) vs Actual (reality). Toggled in `AppHeader`. Blocks belong to one layer. "Fill from plan" copies unmatched planned blocks into Actual for either the displayed range or an individual day from its day-header button. Plan blocks can also appear as an opacity-adjustable underlay in Actual, with the maximum matching their Plan-view opacity.
 - **Draft blocks** — A block created by dragging on the grid stays as a draft until it has a non-empty title or non-default category. Drafts are discarded on close.
 - **Default category** — One calendar is marked default; new blocks use it automatically.
 - **Tabs (groups)** — Calendars are organized into collapsible tabs in the sidebar.
@@ -108,19 +108,19 @@ On startup, tabs identify live sibling tabs through `BroadcastChannel` before cl
 ```
 app/page.tsx  (dynamic, ssr:false)
 ├── AuthScreen.tsx               ← sign-in, signup, confirmation guidance, recovery, and configuration gate
-└── CalendarApp.tsx              ← authenticated root; owns all UI state (layer, view, selection, panels, menus)
+└── CalendarApp.tsx              ← authenticated root; owns UI state and keeps the cached/empty workspace visible during locked hydration
     ├── AppHeader.tsx            ← layer switch (right-click opens GroupMenu for rename), nav, tools
     ├── Sidebar.tsx              ← mini-calendar, calendar/group list, DnD reorder
     │   └── FloatingMenus.tsx   ← CalendarMenu, GroupMenu, CalendarAreaMenu
     ├── CalendarToolbar.tsx      ← quote editor, density, copy-plan-to-actual
-    ├── WeekGrid.tsx / MonthView.tsx  ← main grid; drag-to-create, drag-to-move, resize
+    ├── WeekGrid.tsx / MonthView.tsx  ← main grid; drag-to-create, drag-to-move, resize; Actual day headers can fill that day from Plan
     ├── EventCard.tsx            ← rendered block and drag-creation preview on the grid
     ├── EventInspector.tsx       ← right panel when a block is selected
     │   └── RecurrenceEditor.tsx ← daily/weekly/multiple-days repeat controls
     ├── RecurrenceScopeDialog.tsx ← recurring edit/move/resize/delete scope picker
     ├── FloatingMenus.tsx        ← EventMenu (right-click on block)
-    ├── InsightsPanel.tsx        ← weekly stats panel
-    ├── SettingsPanel.tsx        ← settings + import/export JSON + recently deleted
+    ├── InsightsPanel.tsx        ← weekly stats panel; omits calendars excluded in settings from every metric
+    ├── SettingsPanel.tsx        ← settings, collapsed weekly-insights exclusions via the shared grouped calendar list, import/export JSON, recently deleted
     ├── SearchPanel.tsx
     ├── ShortcutsPanel.tsx
     ├── CommandPalette.tsx       ← ⌘K palette
@@ -197,7 +197,7 @@ All three floating context menus (`CalendarMenu`, `GroupMenu`, `EventMenu`) shar
 - The app is gated by Supabase Auth using verified email and password. Supabase Auth stores bcrypt password hashes; application tables never receive passwords.
 - A unique username is chosen during signup and used as account identity/display metadata. Login remains email + password because Supabase Auth does not natively authenticate usernames; the app does not expose a username-to-email lookup.
 - Confirmation and recovery redirects use the browser origin, allowing allow-listed localhost and production origins to share one Supabase project.
-- Initial session restoration, dynamic application loading, and workspace validation share one continuous `AppLoading` screen. The sign-in form is rendered only after Supabase confirms there is no persisted user, preventing both false login flashes and blank transitions during refresh in development, preview, or production deployments.
+- Initial session restoration and dynamic application loading use `AppLoading`; the sign-in form is rendered only after Supabase confirms there is no persisted user, preventing a false login flash. Once authenticated, `CalendarApp` always renders the calendar workspace: it begins from a neutral empty model, displays the IndexedDB cache as soon as it is available, and shows a loading toast while server validation and outbox recovery finish. Calendar interactions and store commits remain disabled during that hydration window so late-arriving data cannot overwrite user edits.
 - Supabase URL and publishable key are public client configuration. Secret/service-role keys must never be exposed to the browser.
 - A first-time account starts from the demo workspace and immediately creates its authoritative Supabase workspace. There is no pre-Supabase data migration path because the application has no legacy users.
 - IndexedDB stores one user-qualified, Supabase-acknowledged snapshot as a disposable warm cache. A separate per-tab outbox stores only the current pending workspace, its merge base, and any frozen mutation identity until Supabase acknowledges it. Abandoned records are recovered and merged on the next app startup; active sibling tabs retain ownership of their records.

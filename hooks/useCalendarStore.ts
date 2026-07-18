@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { loadDemoCalendar, normalizeCalendarData } from "@/lib/calendar/seed";
+import { loadDemoCalendar, loadEmptyCalendar, normalizeCalendarData } from "@/lib/calendar/seed";
 import type {
   CalendarBlock,
   CalendarData,
@@ -62,7 +62,7 @@ const blockSaveMode = (before: CalendarBlock | undefined, after: CalendarBlock) 
   saveModeForChangedFields(before, after, BUFFERED_BLOCK_FIELDS);
 
 export function useCalendarStore(user: User) {
-  const [data, setData] = useState<CalendarData>(() => loadDemoCalendar());
+  const [data, setData] = useState<CalendarData>(() => loadEmptyCalendar());
   const dataRef = useRef(data);
   const [ready, setReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("loading");
@@ -689,6 +689,7 @@ export function useCalendarStore(user: User) {
       change: (current: CalendarData) => CalendarData,
       mode: SaveMode = "immediate",
     ) => {
+      if (!initializedRef.current) return;
       setData((current) => {
         setPast((items) => [
           ...items.slice(-(HISTORY_LIMIT - 1)),
@@ -704,6 +705,7 @@ export function useCalendarStore(user: User) {
     [markDirty],
   );
   const undoHistory = useCallback(() => {
+    if (!initializedRef.current) return;
     setPast((items) => {
       if (!items.length) return items;
       const previous = items[items.length - 1];
@@ -717,6 +719,7 @@ export function useCalendarStore(user: User) {
     });
   }, [markDirty]);
   const redoHistory = useCallback(() => {
+    if (!initializedRef.current) return;
     setFuture((items) => {
       if (!items.length) return items;
       const next = items[0];
@@ -1027,6 +1030,9 @@ export function useCalendarStore(user: User) {
               v.settings.defaultCategoryId === id
                 ? fallback
                 : v.settings.defaultCategoryId,
+            insightsExcludedCategoryIds: (
+              v.settings.insightsExcludedCategoryIds ?? []
+            ).filter((categoryId) => categoryId !== id),
           },
         };
       }),
@@ -1052,20 +1058,26 @@ export function useCalendarStore(user: User) {
   );
   const mergeCategory = useCallback(
     (sourceId: string, targetId: string) =>
-      commit((v) => ({
-        ...v,
-        categories: v.categories.filter((c) => c.id !== sourceId),
-        blocks: v.blocks.map((b) =>
-          b.categoryId === sourceId ? { ...b, categoryId: targetId } : b,
-        ),
-        settings: {
-          ...v.settings,
-          defaultCategoryId:
-            v.settings.defaultCategoryId === sourceId
-              ? targetId
-              : v.settings.defaultCategoryId,
-        },
-      })),
+      commit((v) => {
+        const excluded = new Set(v.settings.insightsExcludedCategoryIds ?? []);
+        if (excluded.has(sourceId)) excluded.add(targetId);
+        excluded.delete(sourceId);
+        return {
+          ...v,
+          categories: v.categories.filter((c) => c.id !== sourceId),
+          blocks: v.blocks.map((b) =>
+            b.categoryId === sourceId ? { ...b, categoryId: targetId } : b,
+          ),
+          settings: {
+            ...v.settings,
+            defaultCategoryId:
+              v.settings.defaultCategoryId === sourceId
+                ? targetId
+                : v.settings.defaultCategoryId,
+            insightsExcludedCategoryIds: Array.from(excluded),
+          },
+        };
+      }),
     [commit],
   );
   const setQuote = useCallback(
