@@ -80,7 +80,7 @@ Workspace/profile tables are scoped by `user_id`; foreign keys preserve group/ca
 
 ## Core Concepts
 
-- **Layers** — Plan (intent) vs Actual (reality). Toggled in `AppHeader`. Blocks belong to one layer. "Copy Plan to Actual" bulk-copies unmatched blocks.
+- **Layers** — Plan (intent) vs Actual (reality). Toggled in `AppHeader`. Blocks belong to one layer. "Fill from plan" copies unmatched planned blocks into Actual for either the displayed range or an individual day from its day-header button. Plan blocks can also appear as an opacity-adjustable underlay in Actual, with the maximum matching their Plan-view opacity.
 - **Draft blocks** — A block created by dragging on the grid stays as a draft until it has a non-empty title or non-default category. Drafts are discarded on close.
 - **Default category** — One calendar is marked default; new blocks use it automatically.
 - **Tabs (groups)** — Calendars are organized into collapsible tabs in the sidebar.
@@ -113,7 +113,7 @@ app/page.tsx  (dynamic, ssr:false)
     ├── Sidebar.tsx              ← mini-calendar, calendar/group list, DnD reorder
     │   └── FloatingMenus.tsx   ← CalendarMenu, GroupMenu, CalendarAreaMenu
     ├── CalendarToolbar.tsx      ← quote editor, density, copy-plan-to-actual
-    ├── WeekGrid.tsx / MonthView.tsx  ← main grid; drag-to-create, drag-to-move, resize
+    ├── WeekGrid.tsx / MonthView.tsx  ← main grid; drag-to-create, drag-to-move, resize; Actual day headers can fill that day from Plan
     ├── EventCard.tsx            ← rendered block and drag-creation preview on the grid
     ├── EventInspector.tsx       ← right panel when a block is selected
     │   └── RecurrenceEditor.tsx ← daily/weekly/multiple-days repeat controls
