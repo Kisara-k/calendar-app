@@ -42,7 +42,7 @@ CalendarData (version: 2)          ← in-memory/import-export compatibility mod
 └── deletedCalendars?: DeletedCalendar[]  ← soft-deleted calendars
 
 CalendarBlock
-├── id, date (YYYY-MM-DD), start/end (decimal hours)
+├── id, date (YYYY-MM-DD), start/end (decimal hours; timed `end` may exceed 24 for a multi-day span)
 ├── title, categoryId, layer ('plan'|'actual')
 ├── notes?, status? (ActualStatus), sourcePlanId?, allDay?
 ├── seriesId?, occurrenceIndex? ← recurring-series identity/order
@@ -82,7 +82,8 @@ Workspace/profile tables are scoped by `user_id`; foreign keys preserve group/ca
 ## Core Concepts
 
 - **Layers** — Plan (intent) vs Actual (reality). Toggled in `AppHeader`. Timed blocks belong to one visible layer; all-day blocks retain their stored layer but render in both views. "Fill from plan" copies unmatched timed planned blocks into Actual for either the displayed range or an individual day from its day-header button. Plan blocks can also appear as an opacity-adjustable underlay in Actual, with the maximum matching their Plan-view opacity.
-- **Draft blocks** — A block created by dragging on the timed grid or by clicking open space in a day's all-day slot stays as a draft until it has a non-empty title or non-default category. Drafts are discarded on close.
+- **Draft blocks** — A block created by dragging on the timed grid or by clicking open space in a day's all-day slot stays as a draft until it has a non-empty title or non-default category. Drafts remain draggable without being persisted and are discarded on close.
+- **Cross-midnight timed blocks** — Drag creation can continue into later day columns. The block remains one event anchored to its start date; `end` stores elapsed decimal hours from that date and may exceed 24 (for example, 11 PM–1 AM is `start: 23, end: 25`). Week/day and month views render a segment on each covered date, while selection, movement, resizing, recurrence, inspector edits, and persistence operate on the single block.
 - **All-day blocks** — All-day blocks are always visible in both Plan and Actual and are excluded from Plan-to-Actual copying. Hovering a day's unused all-day space reveals a centered plus without changing the normal calendar cursor, and the whole open area creates an event. Populated days keep a compact add area. All-day blocks reuse `EventCard` and `EventMenu`, never render resize controls, can move between days, and can be reordered within a day; their hidden start-minute value stores that visual order.
 - **Default category** — One calendar is marked default; new blocks use it automatically.
 - **Calendar visibility** — Hidden calendars remain available in the calendar sidebar and Settings, but are omitted from calendar-selection dropdowns and menus.
@@ -136,6 +137,7 @@ Supporting modules in `lib/calendar/`:
 - `types.ts` — all TypeScript types
 - `constants.ts` — color palette, default settings
 - `date.ts` — date helpers (formatTime, configurable-start weekDates/startOfWeek, toISO, etc.)
+- `block-time.ts` — cross-midnight block clock conversion and per-day display segmentation
 - `layout.ts` — timed-event overlap lanes, including Notion-style thin-event overlays
 - `recurrence.ts` — series generation plus scoped update/delete transforms
 - `seed.ts` — demo data loader + normalizer
@@ -156,6 +158,7 @@ Supabase modules:
 - `supabase/migrations/20260714040000_revision_broadcasts.sql` — one minimal revision invalidation per committed workspace patch
 - `supabase/migrations/20260714050000_incremental_sync.sql` — per-row revision stamps, delete tombstones, and the ordered change-feed RPC
 - `supabase/migrations/20260715000000_sparse_writes_and_notes.sql` — field-level mutation payloads and separate note records
+- `supabase/migrations/20260719000000_multiday_blocks.sql` — permits timed and recurring block ends beyond midnight (up to seven days)
 
 ---
 

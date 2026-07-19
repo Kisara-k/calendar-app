@@ -41,7 +41,7 @@ export function rangeLabel(dates: Date[]) {
 }
 
 export function formatTime(value:number, format:'12h'|'24h'='12h') {
-  const hours=Math.floor(value), minutes=Math.round((value-hours)*60)%60
+  const normalized=((value%24)+24)%24, hours=Math.floor(normalized), minutes=Math.round((normalized-hours)*60)%60
   if(format==='24h') return `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}`
   const h=hours%12||12
   return `${h}:${String(minutes).padStart(2,'0')} ${hours>=12?'PM':'AM'}`
