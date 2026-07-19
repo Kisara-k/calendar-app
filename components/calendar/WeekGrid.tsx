@@ -1,7 +1,7 @@
 'use client'
 
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Copy } from 'lucide-react'
+import { ChevronDown, Copy, Plus } from 'lucide-react'
 import { DAY_NAMES } from '@/lib/calendar/constants'
 import { addDays, differenceInCalendarDays, formatTime, fromISO, snapTime, toISO } from '@/lib/calendar/date'
 import { overlapLayout } from '@/lib/calendar/layout'
@@ -12,6 +12,7 @@ type Interaction =
   | {type:'create';pointerId:number;originX:number;originY:number;dateIndex:number;start:number;current:number;moved:boolean}
   | {type:'move';pointerId:number;originX:number;originY:number;block:CalendarBlock;offset:number;dateIndex:number;start:number;moved:boolean;openOnRelease:boolean}
   | {type:'resize';pointerId:number;originX:number;originY:number;block:CalendarBlock;end:number;moved:boolean}
+  | {type:'all-day-move';pointerId:number;originX:number;originY:number;block:CalendarBlock;dateIndex:number;orderIndex:number;moved:boolean}
   | {type:'select';pointerId:number;originX:number;originY:number;x1:number;y1:number;x2:number;y2:number;moved:boolean}
 
 type Props={dates:Date[];blocks:CalendarBlock[];categories:CalendarCategory[];settings:CalendarSettings;layer:Layer;selectedIds:string[];onSelect:(id:string,additive:boolean)=>void;onSelectMany:(ids:string[])=>void;onClearSelection:()=>void;onCreate:(b:Omit<CalendarBlock,'id'>)=>CalendarBlock;onUpdate:(b:CalendarBlock,action:'move'|'resize')=>void;onUpdateMany:(b:CalendarBlock[])=>void;onOpen:(id:string)=>void;onEventContext:(id:string,x:number,y:number)=>void;onCopyPlanDay:(date:string)=>void}
@@ -22,6 +23,7 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
   const hourHeight=60*(settings.hourScale??1)
   const scrollRef=useRef<HTMLDivElement>(null)
   const columnsRef=useRef<HTMLDivElement>(null)
+  const allDayRef=useRef<HTMLDivElement>(null)
   const [interaction,setInteraction]=useState<Interaction|null>(null)
   const [tentativeIds,setTentativeIds]=useState<string[]>([])
   const [hoverTime,setHoverTime]=useState<{day:number;time:number}|null>(null)
@@ -41,7 +43,7 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
   })
   const manipulationGhosts=!interaction?.moved?[]:interaction.type==='resize'?currentBlocks.filter(b=>b.id===interaction.block.id):interaction.type==='move'?currentBlocks.filter(b=>b.id===interaction.block.id||(selectedIds.includes(interaction.block.id)&&selectedIds.length>1&&selectedIds.includes(b.id))):[]
   const ghostBlocks=layer==='actual'?blocks.filter(b=>b.layer==='plan'&&!b.allDay&&visibleCats.has(b.categoryId)&&dates.some(d=>toISO(d)===b.date)):[]
-  const allDay=blocks.filter(b=>b.layer===layer&&b.allDay&&visibleCats.has(b.categoryId)&&dates.some(d=>toISO(d)===b.date))
+  const allDay=blocks.filter(b=>b.allDay&&visibleCats.has(b.categoryId)&&dates.some(d=>toISO(d)===b.date))
 
   useLayoutEffect(()=>{const node=scrollRef.current;if(node)node.scrollTop=Math.max(0,settings.wakeHour*hourHeight)},[hourHeight,settings.wakeHour,dates.length])
   useLayoutEffect(()=>{const node=scrollRef.current;if(!node)return;const measure=()=>setScrollbarWidth(node.offsetWidth-node.clientWidth);measure();const ro=new ResizeObserver(measure);ro.observe(node);return()=>ro.disconnect()},[])
@@ -63,6 +65,26 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
     if(e.ctrlKey||e.metaKey){(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);setInteraction({type:'select',pointerId:e.pointerId,originX:e.clientX,originY:e.clientY,x1:e.clientX,y1:e.clientY,x2:e.clientX,y2:e.clientY,moved:false});return}
     const p=point(e);(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
     setInteraction({type:'create',pointerId:e.pointerId,originX:e.clientX,originY:e.clientY,dateIndex:p.day,start:p.time,current:p.time,moved:false});onClearSelection()
+  }
+  function createAllDay(date:Date){
+    const block=onCreate({date:toISO(date),start:0,end:24,title:'',categoryId:settings.defaultCategoryId,layer,allDay:true});onSelect(block.id,false);onOpen(block.id)
+  }
+  const sortedAllDay=(date:string)=>allDay.filter(b=>b.date===date).sort((a,b)=>a.start-b.start)
+  function displayedAllDay(date:string,dateIndex:number){
+    const items=sortedAllDay(date);if(interaction?.type!=='all-day-move'||!interaction.moved)return items
+    const without=items.filter(b=>b.id!==interaction.block.id);if(interaction.dateIndex===dateIndex)without.splice(clamp(interaction.orderIndex,0,without.length),0,{...interaction.block,date});return without
+  }
+  function beginAllDay(e:React.PointerEvent,_kind:'move'|'resize',block:CalendarBlock){
+    if(e.button!==0)return;e.preventDefault();e.stopPropagation();allDayRef.current?.setPointerCapture(e.pointerId);const dateIndex=dates.findIndex(d=>toISO(d)===block.date),orderIndex=sortedAllDay(block.date).findIndex(b=>b.id===block.id)
+    if(e.shiftKey||e.ctrlKey||e.metaKey)onSelect(block.id,true);else if(!selectedIds.includes(block.id))onSelect(block.id,false)
+    setInteraction({type:'all-day-move',pointerId:e.pointerId,originX:e.clientX,originY:e.clientY,block,dateIndex,orderIndex,moved:false})
+  }
+  function moveAllDay(e:React.PointerEvent){
+    if(interaction?.type!=='all-day-move'||interaction.pointerId!==e.pointerId)return;const cells=Array.from(allDayRef.current?.querySelectorAll<HTMLElement>('[data-all-day-index]')??[]);if(!cells.length)return
+    let dateIndex=0,distance=Infinity;cells.forEach((cell,index)=>{const rect=cell.getBoundingClientRect(),next=e.clientX<rect.left?rect.left-e.clientX:e.clientX>rect.right?e.clientX-rect.right:0;if(next<distance){distance=next;dateIndex=index}});const rect=cells[dateIndex].getBoundingClientRect(),target=sortedAllDay(toISO(dates[dateIndex])).filter(b=>b.id!==interaction.block.id),orderIndex=clamp(Math.round((e.clientY-rect.top-2)/23),0,target.length),moved=interaction.moved||Math.hypot(e.clientX-interaction.originX,e.clientY-interaction.originY)>6;setInteraction({...interaction,dateIndex,orderIndex,moved})
+  }
+  function endAllDay(e:React.PointerEvent){
+    if(interaction?.type!=='all-day-move'||interaction.pointerId!==e.pointerId)return;if(!interaction.moved){onOpen(interaction.block.id);setInteraction(null);return}const sourceDate=interaction.block.date,targetDate=toISO(dates[interaction.dateIndex]),source=sortedAllDay(sourceDate).filter(b=>b.id!==interaction.block.id),target=sourceDate===targetDate?source:sortedAllDay(targetDate).filter(b=>b.id!==interaction.block.id);target.splice(clamp(interaction.orderIndex,0,target.length),0,{...interaction.block,date:targetDate});const ordered=sourceDate===targetDate?target:[...source,...target],seen=new Set<string>(),updates=ordered.filter(b=>!seen.has(b.id)&&seen.add(b.id)).map(b=>{const peers=b.date===sourceDate&&sourceDate!==targetDate?source:target,order=peers.findIndex(item=>item.id===b.id);return {...b,start:order/60,end:24}});onUpdateMany(updates);setInteraction(null)
   }
   function beginEvent(e:React.PointerEvent,kind:'move'|'resize',block:CalendarBlock){
     if(e.button!==0)return;e.preventDefault();e.stopPropagation();columnsRef.current?.setPointerCapture(e.pointerId)
@@ -118,7 +140,7 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
 
   return <div className="calendar-surface" style={{'--scrollbar-width':`${scrollbarWidth}px`} as React.CSSProperties}>
     <div className="day-header-grid" style={{'--day-count':dates.length} as React.CSSProperties}><div className="zone-header">GMT+5:30</div>{dates.map(d=>{const date=toISO(d);return <div className={`day-header ${date===toISO(new Date())?'today':''}`} key={date}><span>{DAY_NAMES[(d.getDay()+6)%7]}</span><b>{d.getDate()}</b>{layer==='actual'&&<button className="fill-plan-day" aria-label={`Fill ${DAY_NAMES[(d.getDay()+6)%7]} from plan`} title="Fill this day from plan" onClick={()=>onCopyPlanDay(date)}><Copy size={11}/></button>}</div>})}<div className="scrollbar-spacer" style={scrollbarWidth===0?{display:'none'}:undefined}/></div>
-    <div className="all-day-grid" style={{'--day-count':dates.length} as React.CSSProperties}><button className="all-day-label">All-day <ChevronDown size={10}/></button>{dates.map(d=><div className="all-day-cell" key={toISO(d)}>{allDay.filter(b=>b.date===toISO(d)).map(b=><button key={b.id} onClick={()=>onOpen(b.id)}>{b.title}</button>)}</div>)}<div className="scrollbar-spacer" style={scrollbarWidth===0?{display:'none'}:undefined}/></div>
+    <div className="all-day-grid" ref={allDayRef} style={{'--day-count':dates.length} as React.CSSProperties} onPointerMove={moveAllDay} onPointerUp={endAllDay} onPointerCancel={()=>setInteraction(null)}><button className="all-day-label">All-day <ChevronDown size={10}/></button>{dates.map((d,dateIndex)=>{const items=displayedAllDay(toISO(d),dateIndex);return <div className={`all-day-slot${items.length?' populated':''}`} data-all-day-index={dateIndex} key={toISO(d)}><div className="all-day-events" style={{height:items.length?items.length*23-2:0}}>{items.map((b,index)=><EventCard key={b.id} block={b} category={catOf(b)} settings={settings} top={index*23} height={21} left={0} width={100} selected={selectedIds.includes(b.id)} onPointerDown={beginAllDay} onSelect={()=>onOpen(b.id)} onContextMenu={e=>onEventContext(b.id,e.clientX,e.clientY)}/>)}</div><button className="all-day-create" aria-label={`Add all-day event on ${toISO(d)}`} onClick={()=>createAllDay(d)}><Plus size={11}/></button></div>})}<div className="scrollbar-spacer" style={scrollbarWidth===0?{display:'none'}:undefined}/></div>
     <div className="time-scroll" ref={scrollRef}>
       <div className="time-canvas" style={{height:24*hourHeight}}>
         <div className="time-rail">{Array.from({length:24},(_,h)=><span key={h} style={{top:h*hourHeight-6}}>{formatTime(h,settings.timeFormat).replace(':00','')}</span>)}</div>
@@ -136,6 +158,7 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
       </div>
     </div>
     {interaction?.type==='select'&&interaction.moved&&<div className="selection-rect" style={{left:Math.min(interaction.x1,interaction.x2),top:Math.min(interaction.y1,interaction.y2),width:Math.abs(interaction.x2-interaction.x1),height:Math.abs(interaction.y2-interaction.y1)}}/>}
-    {interaction?.moved&&interaction.type!=='select'&&<div className="drag-tooltip">{interaction.type==='move'?`Move to ${DAY_NAMES[(dates[interaction.dateIndex].getDay()+6)%7]} ${formatTime(interaction.start,settings.timeFormat)}`:interaction.type==='resize'?`${formatTime(interaction.end,settings.timeFormat)} · ${Math.round((interaction.end-interaction.block.start)*60)} min`:`${formatTime(Math.min(interaction.start,interaction.current),settings.timeFormat)} – ${formatTime(Math.max(interaction.start,interaction.current),settings.timeFormat)}`}</div>}
+    {interaction?.moved&&interaction.type!=='select'&&interaction.type!=='all-day-move'&&<div className="drag-tooltip">{interaction.type==='move'?`Move to ${DAY_NAMES[(dates[interaction.dateIndex].getDay()+6)%7]} ${formatTime(interaction.start,settings.timeFormat)}`:interaction.type==='resize'?`${formatTime(interaction.end,settings.timeFormat)} · ${Math.round((interaction.end-interaction.block.start)*60)} min`:`${formatTime(Math.min(interaction.start,interaction.current),settings.timeFormat)} – ${formatTime(Math.max(interaction.start,interaction.current),settings.timeFormat)}`}</div>}
+    {interaction?.moved&&interaction.type==='all-day-move'&&<div className="drag-tooltip">Move to {DAY_NAMES[(dates[interaction.dateIndex].getDay()+6)%7]} · position {interaction.orderIndex+1}</div>}
   </div>
 }

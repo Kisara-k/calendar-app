@@ -1139,6 +1139,7 @@ export function useCalendarStore(user: User) {
         .filter(
           (b) =>
             b.layer === "plan" &&
+            !b.allDay &&
             dates.includes(b.date) &&
             !existing.has(b.id) &&
             !natural.has(`${b.date}|${b.title.toLocaleLowerCase()}`),
