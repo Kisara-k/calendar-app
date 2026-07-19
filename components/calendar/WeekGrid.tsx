@@ -29,6 +29,7 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
   const [tentativeIds,setTentativeIds]=useState<string[]>([])
   const [hoverTime,setHoverTime]=useState<{day:number;time:number}|null>(null)
   const [scrollbarWidth,setScrollbarWidth]=useState(0)
+  const [bottomPadding,setBottomPadding]=useState(0)
   const visibleCats=new Set(categories.filter(c=>c.visible).map(c=>c.id))
   const categoryOrder=useMemo(()=>new Map(categories.map((c,index)=>[c.id,index])),[categories])
   const visibleDates=new Set(dates.map(toISO))
@@ -50,7 +51,7 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
   const displaySegments=renderSegments(displayBlocks),manipulationGhostSegments=renderSegments(manipulationGhosts),ghostSegments=renderSegments(ghostBlocks)
 
   useLayoutEffect(()=>{const node=scrollRef.current;if(node)node.scrollTop=Math.max(0,settings.wakeHour*hourHeight)},[hourHeight,settings.wakeHour,dates.length])
-  useLayoutEffect(()=>{const node=scrollRef.current;if(!node)return;const measure=()=>setScrollbarWidth(node.offsetWidth-node.clientWidth);measure();const ro=new ResizeObserver(measure);ro.observe(node);return()=>ro.disconnect()},[])
+  useLayoutEffect(()=>{const node=scrollRef.current;if(!node)return;let frame=0;const measure=(align=false)=>{setScrollbarWidth(node.offsetWidth-node.clientWidth);setBottomPadding(Math.max(0,settings.wakeHour*hourHeight+node.clientHeight-24*hourHeight));if(align){cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>node.scrollTop=Math.max(0,settings.wakeHour*hourHeight))}};measure(true);const ro=new ResizeObserver(()=>measure());ro.observe(node);return()=>{cancelAnimationFrame(frame);ro.disconnect()}},[hourHeight,settings.wakeHour])
 
   const layouts=useMemo(()=>{
     const map=new Map<string,{left:number;width:number;overlay:boolean}>()
@@ -158,6 +159,7 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
           {hoverTime&&!interaction&&<div className={`hover-time${scrollRef.current&&hoverTime.time*hourHeight>scrollRef.current.scrollTop+scrollRef.current.clientHeight-24?' flip':''}`} style={{top:hoverTime.time>=24?24*hourHeight-1:hoverTime.time*hourHeight,left:`${hoverTime.day/dates.length*100}%`,width:`${100/dates.length}%`}}><span>{formatTime(hoverTime.time,settings.timeFormat)}</span></div>}
         </div>
       </div>
+      <div aria-hidden="true" style={{height:bottomPadding}}/>
     </div>
     {interaction?.type==='select'&&interaction.moved&&<div className="selection-rect" style={{left:Math.min(interaction.x1,interaction.x2),top:Math.min(interaction.y1,interaction.y2),width:Math.abs(interaction.x2-interaction.x1),height:Math.abs(interaction.y2-interaction.y1)}}/>}
     {interaction?.moved&&interaction.type!=='select'&&interaction.type!=='all-day-move'&&<div className="drag-tooltip">{interaction.type==='move'?`Move to ${DAY_NAMES[(dates[interaction.dateIndex].getDay()+6)%7]} ${formatTime(interaction.start,settings.timeFormat)}`:interaction.type==='resize'?`${formatTime(interaction.end,settings.timeFormat)} · ${Math.round((interaction.end-interaction.block.start)*60)} min`:live?`${formatTime(live.start,settings.timeFormat)} – ${formatTime(live.end,settings.timeFormat)}`:''}</div>}
