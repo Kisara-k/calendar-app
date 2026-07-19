@@ -54,6 +54,7 @@ export type CalendarSettings = {
   defaultDuration: number
   density: 'compact' | 'default' | 'comfortable'
   hourScale: number
+  monthScale: number
   defaultCategoryId: string
   showWeekends: boolean
   weekStartsOn: Weekday

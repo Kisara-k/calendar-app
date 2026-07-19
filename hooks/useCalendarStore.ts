@@ -47,6 +47,7 @@ const OUTBOX_LEASE = 60000;
 const BUFFERED_BLOCK_FIELDS = new Set<keyof CalendarBlock>(["title", "notes"]);
 const BUFFERED_SETTING_FIELDS = new Set<keyof CalendarSettings>([
   "hourScale",
+  "monthScale",
   "underlayOpacity",
 ]);
 export type SyncStatus =
