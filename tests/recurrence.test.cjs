@@ -117,6 +117,8 @@ test('recurrence controls keep the requested order, defaults, duration fields, a
 
 test('live inspector edits remember one recurring scope per selection session',()=>{const app=fs.readFileSync(require.resolve('../components/calendar/CalendarApp.tsx'),'utf8');assert.match(app,/editScopeRef=useRef/);assert.match(app,/remembered=editScopeRef\.current/);assert.ok(!app.includes('[editScope,setEditScope]'))})
 
+test('recurring moves default to one event and expose broader scopes plus undo in a toast',()=>{const app=fs.readFileSync(require.resolve('../components/calendar/CalendarApp.tsx'),'utf8'),dialog=fs.readFileSync(require.resolve('../components/calendar/RecurrenceScopeDialog.tsx'),'utf8'),store=fs.readFileSync(require.resolve('../hooks/useCalendarStore.ts'),'utf8');assert.match(app,/if\(action==='move'\)\{const commitId=store\.updateRecurringBlock\(original,next,'only'\)/);assert.ok(app.includes('Moved this event only')&&app.includes('This and following')&&app.includes('All events')&&app.includes('store.undoCommit(recurringMoveToast.commitId)'));assert.ok(!dialog.includes("'move'"));assert.match(store,/replaceCommitId\?: string/)});
+
 test('setBlockRecurrence uses current start time, not canonical anchor, after a time change on split tail', () => {
   // 1. Create series at 9am
   const series = makeSeries() // Mon/Tue/Thu x5 at 9–10am

@@ -120,7 +120,7 @@ app/page.tsx  (dynamic, ssr:false)
     ├── EventInspector.tsx       ← right panel when a block is selected
     │   └── RecurrenceEditor.tsx ← daily/weekly/multiple-days repeat controls
     │       └── WeekdayPicker.tsx ← shared compact weekday selector, also used by Settings
-    ├── RecurrenceScopeDialog.tsx ← recurring edit/move/resize/delete scope picker
+    ├── RecurrenceScopeDialog.tsx ← recurring edit/resize/delete scope picker
     ├── FloatingMenus.tsx        ← EventMenu (right-click on block)
     ├── InsightsPanel.tsx        ← weekly stats panel; omits calendars excluded in settings from every metric
     ├── SettingsPanel.tsx        ← settings, collapsed weekly-insights exclusions via the shared grouped calendar list, import/export JSON, recently deleted
@@ -178,7 +178,7 @@ All three floating context menus (`CalendarMenu`, `GroupMenu`, `EventMenu`) shar
 ### Recurring events
 - `Multiple days a week` preselects the event's creation weekday, permits any non-empty weekday combination, and accepts an unrestricted number of weeks. Every day and every week are presets of the same weekly rule.
 - New repeat configurations have no prefilled duration. `Every day` accepts weeks and days, materializing `weeks × 7 + days` daily occurrences.
-- Moving, resizing, deleting, or editing a recurring occurrence prompts for `This event only`, `This and all following events`, or `All events`.
+- Moving a recurring occurrence immediately applies to `This event only`. A six-second toast offers `This and all following events`, `All events`, and Undo; choosing a broader scope amends the original move so it remains one undo-history entry. Resizing, deleting, and editing still prompt for scope.
 - `This event only` creates an exception without changing its siblings.
 - `This and all following events` severs the series at the cut point. The head (earlier occurrences) keeps the original `seriesId` and its existing anchors. The tail (selected occurrence and all later) becomes a fully independent series with a new `seriesId`, occurrence indexes restarted from 0, and fresh immutable anchors equal to the post-move dates and times. Delete-all from a tail block removes only the tail series; delete-all from a head block removes only the head series.
 - Following/all schedule transforms are absolute assignments. Every in-scope occurrence receives the selected event's final start/end values, and date moves rebuild each in-scope date from its immutable `recurrenceDate` plus the selected date shift. For `following`, the tail's new `recurrenceDate` anchors are set to the post-move dates. The canonical recurrence anchors on the head and on `only` exceptions are never rewritten. This intentionally removes prior schedule exceptions inside the chosen scope; edits to non-schedule fields leave those exceptions untouched.
@@ -188,7 +188,7 @@ All three floating context menus (`CalendarMenu`, `GroupMenu`, `EventMenu`) shar
 
 ### Undo
 - Ctrl+Z / Ctrl+Shift+Z traverse full undo/redo history (all `commit()` calls)
-- Undo toast is only for block deletion (surface-level convenience)
+- Undo toasts cover block deletion and recurring-event moves (the move toast also offers the two broader recurrence scopes)
 - Calendar soft-delete uses Settings > Recently deleted (persistent recovery)
 - An externally refreshed database snapshot clears local undo/redo history so stale snapshots cannot reverse changes made on another device. Acknowledging this client's own background writes does not clear history.
 

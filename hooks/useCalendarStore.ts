@@ -76,6 +76,7 @@ export function useCalendarStore(user: User) {
   const clientIdRef = useRef(crypto.randomUUID()),
     outboxId = `${user.id}:${clientIdRef.current}`;
   const baseRef = useRef<DatabaseSnapshot | null>(null),
+    lastCommitIdRef = useRef<string | null>(null),
     firstSyncBaseRef = useRef<DatabaseSnapshot | null>(null),
     initializedRef = useRef(false),
     dirtyRef = useRef(false),
@@ -194,6 +195,7 @@ export function useCalendarStore(user: User) {
       setSyncConflict(null);
       setData(next);
       if (resetHistory) {
+        lastCommitIdRef.current = null;
         setPast([]);
         setFuture([]);
       }
@@ -289,6 +291,7 @@ export function useCalendarStore(user: User) {
           dataRef.current = merged;
           mutationRef.current = null;
           setData(merged);
+          lastCommitIdRef.current = null;
           setPast([]);
           setFuture([]);
           cacheSnapshot(remote);
@@ -466,6 +469,7 @@ export function useCalendarStore(user: User) {
         const next = fromDatabaseSnapshot(localBranch);
         dataRef.current = next;
         setData(next);
+        lastCommitIdRef.current = null;
         setPast([]);
         setFuture([]);
         if (remote) cacheSnapshot(remote);
@@ -661,6 +665,7 @@ export function useCalendarStore(user: User) {
       setSyncConflict(null);
       dataRef.current = next;
       setData(next);
+      lastCommitIdRef.current = null;
       setPast([]);
       setFuture([]);
       dirtyRef.current = !patchIsEmpty(diffSnapshots(conflict.remote, chosen));
@@ -688,8 +693,24 @@ export function useCalendarStore(user: User) {
     (
       change: (current: CalendarData) => CalendarData,
       mode: SaveMode = "immediate",
+      replaceCommitId?: string,
     ) => {
-      if (!initializedRef.current) return;
+      if (!initializedRef.current) return null;
+      if (replaceCommitId) {
+        if (lastCommitIdRef.current !== replaceCommitId) return null;
+        setPast((items) => {
+          if (!items.length) return items;
+          const next = change(items[items.length - 1]);
+          setFuture([]);
+          dataRef.current = next;
+          markDirty(next, mode);
+          setData(next);
+          return items;
+        });
+        return replaceCommitId;
+      }
+      const commitId = crypto.randomUUID();
+      lastCommitIdRef.current = commitId;
       setData((current) => {
         setPast((items) => [
           ...items.slice(-(HISTORY_LIMIT - 1)),
@@ -701,11 +722,13 @@ export function useCalendarStore(user: User) {
         markDirty(next, mode);
         return next;
       });
+      return commitId;
     },
     [markDirty],
   );
   const undoHistory = useCallback(() => {
     if (!initializedRef.current) return;
+    lastCommitIdRef.current = null;
     setPast((items) => {
       if (!items.length) return items;
       const previous = items[items.length - 1];
@@ -720,6 +743,7 @@ export function useCalendarStore(user: User) {
   }, [markDirty]);
   const redoHistory = useCallback(() => {
     if (!initializedRef.current) return;
+    lastCommitIdRef.current = null;
     setFuture((items) => {
       if (!items.length) return items;
       const next = items[0];
@@ -766,13 +790,19 @@ export function useCalendarStore(user: User) {
     [commit],
   );
   const updateRecurringBlock = useCallback(
-    (original: CalendarBlock, block: CalendarBlock, scope: RecurrenceScope) =>
+    (
+      original: CalendarBlock,
+      block: CalendarBlock,
+      scope: RecurrenceScope,
+      replaceCommitId?: string,
+    ) =>
       commit(
         (v) => ({
           ...v,
           blocks: applyScopedUpdate(v.blocks, original, block, scope),
         }),
         blockSaveMode(original, block),
+        replaceCommitId,
       ),
     [commit],
   );
@@ -1149,6 +1179,14 @@ export function useCalendarStore(user: User) {
     undoHistory();
     setUndo(null);
   }, [undoHistory]);
+  const undoCommit = useCallback(
+    (commitId: string) => {
+      if (lastCommitIdRef.current !== commitId) return false;
+      undoHistory();
+      return true;
+    },
+    [undoHistory],
+  );
 
   return useMemo(
     () => ({
@@ -1163,6 +1201,7 @@ export function useCalendarStore(user: User) {
       canRedo: future.length > 0,
       undoHistory,
       redoHistory,
+      undoCommit,
       undoDelete,
       addBlock,
       addBlocks,
@@ -1206,6 +1245,7 @@ export function useCalendarStore(user: User) {
       future.length,
       undoHistory,
       redoHistory,
+      undoCommit,
       undoDelete,
       addBlock,
       addBlocks,
