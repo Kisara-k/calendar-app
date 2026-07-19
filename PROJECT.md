@@ -191,7 +191,7 @@ All three floating context menus (`CalendarMenu`, `GroupMenu`, `EventMenu`) shar
 
 ### Timed-event layout
 - Overlapping substantial events divide the day into side-by-side lanes.
-- An event no more than 75% as long as an event it overlaps renders across nearly the full day width instead of narrowing the longer event for its entire duration. Shorter events that overlap one another still split into separate overlay lanes.
+- When the actual time intersection is no more than 75% of the earlier/background event, the later-starting event renders across nearly the full day width instead of narrowing the background event for its entire duration. Total event durations do not determine eligibility; when starts tie, the shorter event is the foreground candidate. Foreground events that overlap one another still split into separate overlay lanes.
 
 ### Authentication and sync
 - The app is gated by Supabase Auth using verified email and password. Supabase Auth stores bcrypt password hashes; application tables never receive passwords.
