@@ -12,13 +12,21 @@ export function addDays(date: Date, amount: number) {
   const next=new Date(date); next.setDate(next.getDate()+amount); return next
 }
 
-export function startOfWeek(date: Date) {
-  const next=new Date(date); const day=(next.getDay()+6)%7; next.setDate(next.getDate()-day); next.setHours(0,0,0,0); return next
+export function differenceInCalendarDays(later: Date, earlier: Date) {
+  return Math.round((Date.UTC(later.getFullYear(),later.getMonth(),later.getDate())-Date.UTC(earlier.getFullYear(),earlier.getMonth(),earlier.getDate()))/86400000)
 }
 
-export function weekDates(anchor: Date, showWeekends=true) {
-  const start=startOfWeek(anchor)
-  return Array.from({length:showWeekends?7:5},(_,i)=>addDays(start,i))
+export function weekDayOrder(weekStartsOn=0) {
+  return Array.from({length:7},(_,index)=>(weekStartsOn+index)%7)
+}
+
+export function startOfWeek(date: Date, weekStartsOn=0) {
+  const next=new Date(date),day=(next.getDay()+6)%7,distance=(day-weekStartsOn+7)%7; next.setDate(next.getDate()-distance); next.setHours(0,0,0,0); return next
+}
+
+export function weekDates(anchor: Date, showWeekends=true, weekStartsOn=0) {
+  const start=startOfWeek(anchor,weekStartsOn),dates=Array.from({length:7},(_,i)=>addDays(start,i))
+  return showWeekends?dates:dates.filter(date=>date.getDay()!==0&&date.getDay()!==6)
 }
 
 export function monthLabel(dates: Date[]) {
@@ -33,7 +41,7 @@ export function rangeLabel(dates: Date[]) {
 }
 
 export function formatTime(value:number, format:'12h'|'24h'='12h') {
-  const hours=Math.floor(value), minutes=Math.round((value-hours)*60)%60
+  const normalized=((value%24)+24)%24, hours=Math.floor(normalized), minutes=Math.round((normalized-hours)*60)%60
   if(format==='24h') return `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}`
   const h=hours%12||12
   return `${h}:${String(minutes).padStart(2,'0')} ${hours>=12?'PM':'AM'}`

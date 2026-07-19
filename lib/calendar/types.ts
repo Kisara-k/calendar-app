@@ -4,6 +4,7 @@ export type Panel = 'event' | 'insights' | 'settings' | 'search' | 'shortcuts' |
 export type UtilityPanel = Exclude<Panel, 'event'>
 export type ActualStatus = 'completed' | 'partial' | 'skipped' | 'unplanned'
 export type RecurrenceScope = 'only' | 'following' | 'all'
+export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6
 
 export type RecurrenceRule = {
   frequency: 'weekly'
@@ -55,6 +56,7 @@ export type CalendarSettings = {
   hourScale: number
   defaultCategoryId: string
   showWeekends: boolean
+  weekStartsOn: Weekday
   timeFormat: '12h' | '24h'
   underlayOpacity: number
   planLabel?: string

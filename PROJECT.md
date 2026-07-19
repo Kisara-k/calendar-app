@@ -42,7 +42,7 @@ CalendarData (version: 2)          ← in-memory/import-export compatibility mod
 └── deletedCalendars?: DeletedCalendar[]  ← soft-deleted calendars
 
 CalendarBlock
-├── id, date (YYYY-MM-DD), start/end (decimal hours)
+├── id, date (YYYY-MM-DD), start/end (decimal hours; timed `end` may exceed 24 for a multi-day span)
 ├── title, categoryId, layer ('plan'|'actual')
 ├── notes?, status? (ActualStatus), sourcePlanId?, allDay?
 ├── seriesId?, occurrenceIndex? ← recurring-series identity/order
@@ -54,7 +54,8 @@ CalendarBlock
 CalendarCategory  — id, name, color (hex), visible, groupId?
 CalendarGroup     — id, name
 CalendarSettings  — wakeHour, sleepHour, snapMinutes, defaultDuration,
-                    hourScale, showWeekends, timeFormat, underlayOpacity,
+                    hourScale, showWeekends, weekStartsOn (Mon=0 … Sun=6),
+                    timeFormat, underlayOpacity,
                     defaultCategoryId, planLabel?, actualLabel?,
                     autoFormatTitles?, insightsExcludedCategoryIds?
 ```
@@ -80,9 +81,13 @@ Workspace/profile tables are scoped by `user_id`; foreign keys preserve group/ca
 
 ## Core Concepts
 
-- **Layers** — Plan (intent) vs Actual (reality). Toggled in `AppHeader`. Blocks belong to one layer. "Fill from plan" copies unmatched planned blocks into Actual for either the displayed range or an individual day from its day-header button. Plan blocks can also appear as an opacity-adjustable underlay in Actual, with the maximum matching their Plan-view opacity.
-- **Draft blocks** — A block created by dragging on the grid stays as a draft until it has a non-empty title or non-default category. Drafts are discarded on close.
+- **Layers** — Plan (intent) vs Actual (reality). Toggled in `AppHeader`. Timed blocks belong to one visible layer; all-day blocks retain their stored layer but render in both views. "Fill from plan" copies unmatched timed planned blocks into Actual for either the displayed range or an individual day from its day-header button. Plan blocks can also appear as an opacity-adjustable underlay in Actual, with the maximum matching their Plan-view opacity.
+- **Draft blocks** — A block created by dragging on the timed grid or by clicking open space in a day's all-day slot stays as a draft until it has a non-empty title or non-default category. Drafts remain draggable without being persisted and are discarded on close.
+- **Cross-midnight timed blocks** — Drag creation can continue into later day columns. The block remains one event anchored to its start date; `end` stores elapsed decimal hours from that date and may exceed 24 (for example, 11 PM–1 AM is `start: 23, end: 25`). Week/day and month views render a segment on each covered date, while selection, movement, resizing, recurrence, inspector edits, and persistence operate on the single block.
+- **All-day blocks** — All-day blocks are always visible in both Plan and Actual and are excluded from Plan-to-Actual copying. Hovering a day's unused all-day space reveals a centered plus without changing the normal calendar cursor, and the whole open area creates an event. Populated days keep a compact add area. All-day blocks reuse `EventCard` and `EventMenu`, never render resize controls, can move between days, and can be reordered within a day; their hidden start-minute value stores that visual order.
 - **Default category** — One calendar is marked default; new blocks use it automatically.
+- **Calendar visibility** — Hidden calendars remain available in the calendar sidebar and Settings, but are omitted from calendar-selection dropdowns and menus.
+- **Day bounds** — The configured wake and sleep times shade unavailable hours and draw Daily-load-style dashed rules across the timed-event grid at both boundaries. The timed grid adds a viewport-sized bottom scroll buffer when needed so the configured wake time can always align with the top of the scroll pane, including tall or resized layouts.
 - **Tabs (groups)** — Calendars are organized into collapsible tabs in the sidebar.
 - **Recurring blocks** — Recurrence is materialized as ordinary blocks sharing one immutable `seriesId` and stable `occurrenceIndex` values. Immutable canonical date/start/end anchors identify each generated occurrence independently of one-off moves and are never rewritten by scoped updates. The weekly rule supports selected weekdays and an unrestricted week duration; daily repeats accept weeks plus days and once-weekly repeats are presets of the same rule.
 
@@ -113,11 +118,12 @@ app/page.tsx  (dynamic, ssr:false)
     ├── Sidebar.tsx              ← mini-calendar, calendar/group list, DnD reorder
     │   └── FloatingMenus.tsx   ← CalendarMenu, GroupMenu, CalendarAreaMenu
     ├── CalendarToolbar.tsx      ← quote editor, density, copy-plan-to-actual
-    ├── WeekGrid.tsx / MonthView.tsx  ← main grid; drag-to-create, drag-to-move, resize; Actual day headers can fill that day from Plan
+    ├── WeekGrid.tsx / MonthView.tsx  ← main grid; timed drag-to-create/move/resize, all-day creation/move/reorder; Actual day headers can fill that day from Plan
     ├── EventCard.tsx            ← rendered block and drag-creation preview on the grid
     ├── EventInspector.tsx       ← right panel when a block is selected
     │   └── RecurrenceEditor.tsx ← daily/weekly/multiple-days repeat controls
-    ├── RecurrenceScopeDialog.tsx ← recurring edit/move/resize/delete scope picker
+    │       └── WeekdayPicker.tsx ← shared compact weekday selector, also used by Settings
+    ├── RecurrenceScopeDialog.tsx ← recurring edit/resize/delete scope picker
     ├── FloatingMenus.tsx        ← EventMenu (right-click on block)
     ├── InsightsPanel.tsx        ← weekly stats panel; omits calendars excluded in settings from every metric
     ├── SettingsPanel.tsx        ← settings, collapsed weekly-insights exclusions via the shared grouped calendar list, import/export JSON, recently deleted
@@ -130,7 +136,8 @@ app/page.tsx  (dynamic, ssr:false)
 Supporting modules in `lib/calendar/`:
 - `types.ts` — all TypeScript types
 - `constants.ts` — color palette, default settings
-- `date.ts` — date helpers (formatTime, weekDates, toISO, etc.)
+- `date.ts` — date helpers (formatTime, configurable-start weekDates/startOfWeek, toISO, etc.)
+- `block-time.ts` — cross-midnight block clock conversion and per-day display segmentation
 - `layout.ts` — timed-event overlap lanes, including Notion-style thin-event overlays
 - `recurrence.ts` — series generation plus scoped update/delete transforms
 - `seed.ts` — demo data loader + normalizer
@@ -151,6 +158,7 @@ Supabase modules:
 - `supabase/migrations/20260714040000_revision_broadcasts.sql` — one minimal revision invalidation per committed workspace patch
 - `supabase/migrations/20260714050000_incremental_sync.sql` — per-row revision stamps, delete tombstones, and the ordered change-feed RPC
 - `supabase/migrations/20260715000000_sparse_writes_and_notes.sql` — field-level mutation payloads and separate note records
+- `supabase/migrations/20260719000000_multiday_blocks.sql` — permits timed and recurring block ends beyond midnight (up to seven days)
 
 ---
 
@@ -175,7 +183,7 @@ All three floating context menus (`CalendarMenu`, `GroupMenu`, `EventMenu`) shar
 ### Recurring events
 - `Multiple days a week` preselects the event's creation weekday, permits any non-empty weekday combination, and accepts an unrestricted number of weeks. Every day and every week are presets of the same weekly rule.
 - New repeat configurations have no prefilled duration. `Every day` accepts weeks and days, materializing `weeks × 7 + days` daily occurrences.
-- Moving, resizing, deleting, or editing a recurring occurrence prompts for `This event only`, `This and all following events`, or `All events`.
+- Moving a recurring occurrence immediately applies to `This event only`. A six-second toast offers `This and all following events`, `All events`, and Undo; choosing a broader scope amends the original move so it remains one undo-history entry. Resizing, deleting, and editing still prompt for scope.
 - `This event only` creates an exception without changing its siblings.
 - `This and all following events` severs the series at the cut point. The head (earlier occurrences) keeps the original `seriesId` and its existing anchors. The tail (selected occurrence and all later) becomes a fully independent series with a new `seriesId`, occurrence indexes restarted from 0, and fresh immutable anchors equal to the post-move dates and times. Delete-all from a tail block removes only the tail series; delete-all from a head block removes only the head series.
 - Following/all schedule transforms are absolute assignments. Every in-scope occurrence receives the selected event's final start/end values, and date moves rebuild each in-scope date from its immutable `recurrenceDate` plus the selected date shift. For `following`, the tail's new `recurrenceDate` anchors are set to the post-move dates. The canonical recurrence anchors on the head and on `only` exceptions are never rewritten. This intentionally removes prior schedule exceptions inside the chosen scope; edits to non-schedule fields leave those exceptions untouched.
@@ -185,13 +193,13 @@ All three floating context menus (`CalendarMenu`, `GroupMenu`, `EventMenu`) shar
 
 ### Undo
 - Ctrl+Z / Ctrl+Shift+Z traverse full undo/redo history (all `commit()` calls)
-- Undo toast is only for block deletion (surface-level convenience)
+- Undo toasts cover block deletion and recurring-event moves (the move toast also offers the two broader recurrence scopes)
 - Calendar soft-delete uses Settings > Recently deleted (persistent recovery)
 - An externally refreshed database snapshot clears local undo/redo history so stale snapshots cannot reverse changes made on another device. Acknowledging this client's own background writes does not clear history.
 
 ### Timed-event layout
 - Overlapping substantial events divide the day into side-by-side lanes.
-- An event no more than 75% as long as an event it overlaps renders across nearly the full day width instead of narrowing the longer event for its entire duration. Shorter events that overlap one another still split into separate overlay lanes.
+- When the actual time intersection is no more than 75% of the earlier/background event, the later-starting event renders across nearly the full day width instead of narrowing the background event for its entire duration. Total event durations do not determine eligibility; when starts tie, the shorter event is the foreground candidate. Foreground events that overlap one another still split into separate overlay lanes.
 
 ### Authentication and sync
 - The app is gated by Supabase Auth using verified email and password. Supabase Auth stores bcrypt password hashes; application tables never receive passwords.
