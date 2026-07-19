@@ -116,7 +116,7 @@ On startup, tabs identify live sibling tabs through `BroadcastChannel` before cl
 app/page.tsx  (dynamic, ssr:false)
 ├── AuthScreen.tsx               ← sign-in, signup, confirmation guidance, recovery, and configuration gate
 └── CalendarApp.tsx              ← authenticated root; owns UI state and keeps the cached/empty workspace visible during locked hydration
-    ├── AppHeader.tsx            ← layer switch (right-click opens GroupMenu for rename), nav, tools
+    ├── AppHeader.tsx            ← layer switch (right-click opens GroupMenu for rename), segmented month/week/day view switch, nav, tools
     ├── Sidebar.tsx              ← mini-calendar, calendar/group list, DnD reorder
     │   └── FloatingMenus.tsx   ← CalendarMenu, GroupMenu, CalendarAreaMenu
     ├── CalendarToolbar.tsx      ← quote editor, density, copy-plan-to-actual
