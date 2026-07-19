@@ -6,7 +6,7 @@ const ts=require('typescript')
 require.extensions['.ts']=(module,filename)=>{const source=fs.readFileSync(filename,'utf8'),output=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,esModuleInterop:true}}).outputText;module._compile(output,filename)}
 
 const {overlapLayout}=require('../lib/calendar/layout.ts')
-const {monthEventLayout}=require('../lib/calendar/month-layout.ts')
+const {monthEventLayout,monthEventPriority}=require('../lib/calendar/month-layout.ts')
 const order=new Map([['work',0]])
 const block=(id,start,end)=>({id,date:'2026-07-15',start,end,title:id,categoryId:'work',layer:'plan'})
 
@@ -27,3 +27,5 @@ test('overlay eligibility ignores total duration when the actual intersection is
 test('month event rows expand with cell height and reserve room for overflow',()=>{assert.deepEqual(monthEventLayout(75,2),{visible:2,showMore:false});assert.deepEqual(monthEventLayout(75,5),{visible:1,showMore:true});assert.deepEqual(monthEventLayout(150,5),{visible:5,showMore:false});assert.deepEqual(monthEventLayout(150,8),{visible:5,showMore:true})})
 
 test('month event rows do not render controls that cannot fit',()=>{assert.deepEqual(monthEventLayout(40,3),{visible:0,showMore:false})})
+
+test('month priority keeps all-day events unique and places favorite timed events next',()=>{const favorites=new Set(['favorite']),events=[{id:'normal',allDay:false,categoryId:'normal'},{id:'favorite',allDay:false,categoryId:'favorite'},{id:'favorite-all-day',allDay:true,categoryId:'favorite'}];const sorted=[...events].sort((a,b)=>monthEventPriority(a.allDay,a.categoryId,favorites)-monthEventPriority(b.allDay,b.categoryId,favorites));assert.deepEqual(sorted.map(event=>event.id),['favorite-all-day','favorite','normal']);assert.equal(new Set(sorted.map(event=>event.id)).size,events.length)})

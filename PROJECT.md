@@ -57,7 +57,7 @@ CalendarSettings  — wakeHour, sleepHour, snapMinutes, defaultDuration,
                     hourScale, showWeekends, weekStartsOn (Mon=0 … Sun=6),
                     timeFormat, underlayOpacity,
                     defaultCategoryId, planLabel?, actualLabel?,
-                    autoFormatTitles?, insightsExcludedCategoryIds?
+                    autoFormatTitles?, insightsExcludedCategoryIds?, favoriteCategoryIds?
 ```
 
 The database representation is normalized rather than storing this root object as one JSON blob:
@@ -86,6 +86,7 @@ Workspace/profile tables are scoped by `user_id`; foreign keys preserve group/ca
 - **Cross-midnight timed blocks** — Drag creation can continue into later day columns. The block remains one event anchored to its start date; `end` stores elapsed decimal hours from that date and may exceed 24 (for example, 11 PM–1 AM is `start: 23, end: 25`). Week/day and month views render a segment on each covered date, while selection, movement, resizing, recurrence, inspector edits, and persistence operate on the single block.
 - **All-day blocks** — All-day blocks are always visible in both Plan and Actual and are excluded from Plan-to-Actual copying. In month view they use a filled category-colored treatment and sort ahead of timed events, ensuring they receive priority in the four visible event rows. Hovering a day's unused all-day space reveals a centered plus without changing the normal calendar cursor, and the whole open area creates an event. Populated days keep a compact add area. All-day blocks reuse `EventCard` and `EventMenu`, never render resize controls, can move between days, and can be reordered within a day; their hidden start-minute value stores that visual order.
 - **Month overflow** — Month cells measure their rendered row height and show as many prioritized event rows as fit, reserving space for `+x more` only when events overflow. Very short rows omit event controls that cannot fit rather than clipping them. The overflow control opens the shared Insights tooltip with every all-day and active-layer timed event for that date, colored by calendar and labeled with time and duration.
+- **Favorite calendars** — A calendar can be favorited or unfavorited from its right-click menu. Favorite IDs persist in settings, are removed on calendar deletion, and transfer to the merge target when a favorite calendar is merged. Month cells render each event once in the order all-day, favorite timed, then ordinary timed; the overflow tooltip remains neutral with all-day events followed by all timed events chronologically. All-day and favorite timed events share the filled category-color highlight without a left accent bar.
 - **Default category** — One calendar is marked default; new blocks use it automatically.
 - **Calendar visibility** — Hidden calendars remain available in the calendar sidebar and Settings, but are omitted from calendar-selection dropdowns and menus.
 - **Day bounds** — The configured wake and sleep times shade unavailable hours and draw Daily-load-style dashed rules across the timed-event grid at both boundaries. The timed grid adds a viewport-sized bottom scroll buffer when needed so the configured wake time can always align with the top of the scroll pane, including tall or resized layouts.
