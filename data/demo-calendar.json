@@ -10,6 +10,6 @@
   "groups": [{"id":"work","name":"WORK"},{"id":"life","name":"LIFE"}],
   "quoteBank": ["Shape the week before it shapes you.","Make time for what matters.","A calm plan makes room for good work.","Protect your attention; spend it deliberately.","Leave space for the unexpected."],
   "currentQuote": "Shape the week before it shapes you.",
-  "settings": {"wakeHour":6,"sleepHour":23,"snapMinutes":15,"defaultDuration":1,"density":"default","hourScale":1,"defaultCategoryId":"deep","showWeekends":true,"timeFormat":"12h","underlayOpacity":14},
+  "settings": {"wakeHour":6,"sleepHour":23,"snapMinutes":15,"defaultDuration":1,"density":"default","hourScale":1,"defaultCategoryId":"deep","showWeekends":true,"weekStartsOn":0,"timeFormat":"12h","underlayOpacity":14},
   "blocks": []
 }

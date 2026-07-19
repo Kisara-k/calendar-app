@@ -54,7 +54,8 @@ CalendarBlock
 CalendarCategory  — id, name, color (hex), visible, groupId?
 CalendarGroup     — id, name
 CalendarSettings  — wakeHour, sleepHour, snapMinutes, defaultDuration,
-                    hourScale, showWeekends, timeFormat, underlayOpacity,
+                    hourScale, showWeekends, weekStartsOn (Mon=0 … Sun=6),
+                    timeFormat, underlayOpacity,
                     defaultCategoryId, planLabel?, actualLabel?,
                     autoFormatTitles?, insightsExcludedCategoryIds?
 ```
@@ -117,6 +118,7 @@ app/page.tsx  (dynamic, ssr:false)
     ├── EventCard.tsx            ← rendered block and drag-creation preview on the grid
     ├── EventInspector.tsx       ← right panel when a block is selected
     │   └── RecurrenceEditor.tsx ← daily/weekly/multiple-days repeat controls
+    │       └── WeekdayPicker.tsx ← shared compact weekday selector, also used by Settings
     ├── RecurrenceScopeDialog.tsx ← recurring edit/move/resize/delete scope picker
     ├── FloatingMenus.tsx        ← EventMenu (right-click on block)
     ├── InsightsPanel.tsx        ← weekly stats panel; omits calendars excluded in settings from every metric
@@ -130,7 +132,7 @@ app/page.tsx  (dynamic, ssr:false)
 Supporting modules in `lib/calendar/`:
 - `types.ts` — all TypeScript types
 - `constants.ts` — color palette, default settings
-- `date.ts` — date helpers (formatTime, weekDates, toISO, etc.)
+- `date.ts` — date helpers (formatTime, configurable-start weekDates/startOfWeek, toISO, etc.)
 - `layout.ts` — timed-event overlap lanes, including Notion-style thin-event overlays
 - `recurrence.ts` — series generation plus scoped update/delete transforms
 - `seed.ts` — demo data loader + normalizer

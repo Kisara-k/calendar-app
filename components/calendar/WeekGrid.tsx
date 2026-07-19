@@ -3,7 +3,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, Copy } from 'lucide-react'
 import { DAY_NAMES } from '@/lib/calendar/constants'
-import { addDays, formatTime, fromISO, snapTime, toISO } from '@/lib/calendar/date'
+import { addDays, differenceInCalendarDays, formatTime, fromISO, snapTime, toISO } from '@/lib/calendar/date'
 import { overlapLayout } from '@/lib/calendar/layout'
 import type { CalendarBlock, CalendarCategory, CalendarSettings, Layer } from '@/lib/calendar/types'
 import { EventCard } from './EventCard'
@@ -35,7 +35,7 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
     if(interaction.type!=='move')return block
     const movingGroup=selectedIds.includes(interaction.block.id)&&selectedIds.length>1
     if(block.id!==interaction.block.id&&(!movingGroup||!selectedIds.includes(block.id)))return block
-    const originalIndex=dates.findIndex(d=>toISO(d)===interaction.block.date),dayDelta=interaction.dateIndex-originalIndex,timeDelta=interaction.start-interaction.block.start,duration=block.end-block.start
+    const dayDelta=differenceInCalendarDays(dates[interaction.dateIndex],fromISO(interaction.block.date)),timeDelta=interaction.start-interaction.block.start,duration=block.end-block.start
     const start=clamp(block.start+timeDelta,0,24-duration)
     return {...block,date:toISO(addDays(fromISO(block.date),dayDelta)),start,end:start+duration}
   })
@@ -99,7 +99,7 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
       const block=onCreate({date:toISO(dates[interaction.dateIndex]),start,end,title:'',categoryId:settings.defaultCategoryId,layer});onSelect(block.id,false);onOpen(block.id)
     }
     if(interaction.type==='move'&&!interaction.moved&&interaction.openOnRelease)onOpen(interaction.block.id)
-    if(interaction.type==='move'&&interaction.moved){const duration=interaction.block.end-interaction.block.start;const movingGroup=selectedIds.includes(interaction.block.id)&&selectedIds.length>1;if(movingGroup){const originalIndex=dates.findIndex(d=>toISO(d)===interaction.block.date);const dayDelta=interaction.dateIndex-originalIndex;const timeDelta=interaction.start-interaction.block.start;onUpdateMany(blocks.filter(b=>selectedIds.includes(b.id)).map(b=>{const ownDuration=b.end-b.start;const nextStart=clamp(b.start+timeDelta,0,24-ownDuration);return {...b,date:toISO(addDays(fromISO(b.date),dayDelta)),start:nextStart,end:nextStart+ownDuration}}))}else onUpdate({...interaction.block,date:toISO(dates[interaction.dateIndex]),start:interaction.start,end:interaction.start+duration},'move')}
+    if(interaction.type==='move'&&interaction.moved){const duration=interaction.block.end-interaction.block.start;const movingGroup=selectedIds.includes(interaction.block.id)&&selectedIds.length>1;if(movingGroup){const dayDelta=differenceInCalendarDays(dates[interaction.dateIndex],fromISO(interaction.block.date));const timeDelta=interaction.start-interaction.block.start;onUpdateMany(blocks.filter(b=>selectedIds.includes(b.id)).map(b=>{const ownDuration=b.end-b.start;const nextStart=clamp(b.start+timeDelta,0,24-ownDuration);return {...b,date:toISO(addDays(fromISO(b.date),dayDelta)),start:nextStart,end:nextStart+ownDuration}}))}else onUpdate({...interaction.block,date:toISO(dates[interaction.dateIndex]),start:interaction.start,end:interaction.start+duration},'move')}
     if(interaction.type==='resize'&&interaction.moved)onUpdate({...interaction.block,end:interaction.end},'resize')
     setInteraction(null)
   }
@@ -135,6 +135,6 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,onS
       </div>
     </div>
     {interaction?.type==='select'&&interaction.moved&&<div className="selection-rect" style={{left:Math.min(interaction.x1,interaction.x2),top:Math.min(interaction.y1,interaction.y2),width:Math.abs(interaction.x2-interaction.x1),height:Math.abs(interaction.y2-interaction.y1)}}/>}
-    {interaction?.moved&&interaction.type!=='select'&&<div className="drag-tooltip">{interaction.type==='move'?`Move to ${DAY_NAMES[interaction.dateIndex]} ${formatTime(interaction.start,settings.timeFormat)}`:interaction.type==='resize'?`${formatTime(interaction.end,settings.timeFormat)} · ${Math.round((interaction.end-interaction.block.start)*60)} min`:`${formatTime(Math.min(interaction.start,interaction.current),settings.timeFormat)} – ${formatTime(Math.max(interaction.start,interaction.current),settings.timeFormat)}`}</div>}
+    {interaction?.moved&&interaction.type!=='select'&&<div className="drag-tooltip">{interaction.type==='move'?`Move to ${DAY_NAMES[(dates[interaction.dateIndex].getDay()+6)%7]} ${formatTime(interaction.start,settings.timeFormat)}`:interaction.type==='resize'?`${formatTime(interaction.end,settings.timeFormat)} · ${Math.round((interaction.end-interaction.block.start)*60)} min`:`${formatTime(Math.min(interaction.start,interaction.current),settings.timeFormat)} – ${formatTime(Math.max(interaction.start,interaction.current),settings.timeFormat)}`}</div>}
   </div>
 }
