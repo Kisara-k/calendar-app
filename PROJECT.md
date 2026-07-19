@@ -84,7 +84,8 @@ Workspace/profile tables are scoped by `user_id`; foreign keys preserve group/ca
 - **Layers** — Plan (intent) vs Actual (reality). Toggled in `AppHeader`. Timed blocks belong to one visible layer; all-day blocks retain their stored layer but render in both views. "Fill from plan" copies unmatched timed planned blocks into Actual for either the displayed range or an individual day from its day-header button. Plan blocks can also appear as an opacity-adjustable underlay in Actual, with the maximum matching their Plan-view opacity.
 - **Draft blocks** — A block created by dragging on the timed grid or by clicking open space in a day's all-day slot stays as a draft until it has a non-empty title or non-default category. Drafts remain draggable without being persisted and are discarded on close.
 - **Cross-midnight timed blocks** — Drag creation can continue into later day columns. The block remains one event anchored to its start date; `end` stores elapsed decimal hours from that date and may exceed 24 (for example, 11 PM–1 AM is `start: 23, end: 25`). Week/day and month views render a segment on each covered date, while selection, movement, resizing, recurrence, inspector edits, and persistence operate on the single block.
-- **All-day blocks** — All-day blocks are always visible in both Plan and Actual and are excluded from Plan-to-Actual copying. Hovering a day's unused all-day space reveals a centered plus without changing the normal calendar cursor, and the whole open area creates an event. Populated days keep a compact add area. All-day blocks reuse `EventCard` and `EventMenu`, never render resize controls, can move between days, and can be reordered within a day; their hidden start-minute value stores that visual order.
+- **All-day blocks** — All-day blocks are always visible in both Plan and Actual and are excluded from Plan-to-Actual copying. In month view they use a filled category-colored treatment and sort ahead of timed events, ensuring they receive priority in the four visible event rows. Hovering a day's unused all-day space reveals a centered plus without changing the normal calendar cursor, and the whole open area creates an event. Populated days keep a compact add area. All-day blocks reuse `EventCard` and `EventMenu`, never render resize controls, can move between days, and can be reordered within a day; their hidden start-minute value stores that visual order.
+- **Month overflow** — Month cells measure their rendered row height and show as many prioritized event rows as fit, reserving space for `+x more` only when events overflow. Very short rows omit event controls that cannot fit rather than clipping them. The overflow control opens the shared Insights tooltip with every all-day and active-layer timed event for that date, colored by calendar and labeled with time and duration.
 - **Default category** — One calendar is marked default; new blocks use it automatically.
 - **Calendar visibility** — Hidden calendars remain available in the calendar sidebar and Settings, but are omitted from calendar-selection dropdowns and menus.
 - **Day bounds** — The configured wake and sleep times shade unavailable hours and draw Daily-load-style dashed rules across the timed-event grid at both boundaries. The timed grid adds a viewport-sized bottom scroll buffer when needed so the configured wake time can always align with the top of the scroll pane, including tall or resized layouts.
@@ -118,7 +119,8 @@ app/page.tsx  (dynamic, ssr:false)
     ├── Sidebar.tsx              ← mini-calendar, calendar/group list, DnD reorder
     │   └── FloatingMenus.tsx   ← CalendarMenu, GroupMenu, CalendarAreaMenu
     ├── CalendarToolbar.tsx      ← quote editor, density, copy-plan-to-actual
-    ├── WeekGrid.tsx / MonthView.tsx  ← main grid; timed drag-to-create/move/resize, all-day creation/move/reorder; Actual day headers can fill that day from Plan
+    ├── WeekGrid.tsx / MonthView.tsx  ← main grid; timed drag-to-create/move/resize, all-day creation/move/reorder; month overflow tooltips list every event for the day; Actual day headers can fill that day from Plan
+    ├── CalendarTooltip.tsx        ← shared portal tooltip used by month overflow and Insights visualizations
     ├── EventCard.tsx            ← rendered block and drag-creation preview on the grid
     ├── EventInspector.tsx       ← right panel when a block is selected
     │   └── RecurrenceEditor.tsx ← daily/weekly/multiple-days repeat controls
@@ -139,6 +141,7 @@ Supporting modules in `lib/calendar/`:
 - `date.ts` — date helpers (formatTime, configurable-start weekDates/startOfWeek, toISO, etc.)
 - `block-time.ts` — cross-midnight block clock conversion and per-day display segmentation
 - `layout.ts` — timed-event overlap lanes, including Notion-style thin-event overlays
+- `month-layout.ts` — height-based month-cell event capacity and overflow reservation
 - `recurrence.ts` — series generation plus scoped update/delete transforms
 - `seed.ts` — demo data loader + normalizer
 - `color-model.ts` — color manipulation utilities
