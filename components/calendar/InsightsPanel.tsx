@@ -1,14 +1,9 @@
 'use client'
-import { useLayoutEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useRef } from 'react'
 import { BarChart3, CircleGauge, Clock3, X } from 'lucide-react'
 import { formatTime, fromISO, toISO } from '@/lib/calendar/date'
+import { useCalendarTooltip, type TipLine } from './CalendarTooltip'
 import type { CalendarBlock, CalendarCategory, CalendarGroup, CalendarSettings, Layer } from '@/lib/calendar/types'
-
-type TipLine={text:string;hi?:boolean;mid?:string;right?:string}
-type TipData={title?:string;timeRight?:string;color?:string;lines:TipLine[]}
-type Tip=TipData&{below:boolean;cx:number;anchorTop:number;anchorBottom:number}
-type TipPos={cx:number;top:number;arrowPct:number;below:boolean}
 
 type Props={blocks:CalendarBlock[];categories:CalendarCategory[];groups:CalendarGroup[];settings:CalendarSettings;dates:Date[];layer:Layer;onClose?:()=>void}
 
@@ -24,32 +19,8 @@ function polar(cx:number,cy:number,r:number,deg:number):[number,number]{const a=
 function sectorArc(cx:number,cy:number,r:number,inner:number,s:number,e:number){if(e-s<0.5)return '';const[x1,y1]=polar(cx,cy,r,s),[x2,y2]=polar(cx,cy,r,e),[x3,y3]=polar(cx,cy,inner,e),[x4,y4]=polar(cx,cy,inner,s);const la=e-s>180?1:0;return `M${x1},${y1}A${r},${r},0,${la},1,${x2},${y2}L${x3},${y3}A${inner},${inner},0,${la},0,${x4},${y4}Z`}
 
 export function InsightsPanel({blocks,categories,groups,settings,dates,layer,onClose}:Props){
-  const [tip,setTip]=useState<Tip|null>(null)
-  const [tipPos,setTipPos]=useState<TipPos|null>(null)
-  const tipRef=useRef<HTMLDivElement|null>(null)
   const asideRef=useRef<HTMLElement|null>(null)
-  const hideTimer=useRef<ReturnType<typeof setTimeout>|null>(null)
-
-  useLayoutEffect(()=>{
-    if(!tip||!tipRef.current){setTipPos(null);return}
-    const w=tipRef.current.offsetWidth,h=tipRef.current.offsetHeight
-    const rightBound=asideRef.current?.getBoundingClientRect().right??window.innerWidth
-    const cx=Math.min(rightBound-w/2-8,Math.max(w/2+8,tip.cx))
-    const arrowPct=Math.min(92,Math.max(8,(tip.cx-cx+w/2)/w*100))
-    const spaceBelow=window.innerHeight-(tip.anchorBottom+10)
-    const below=spaceBelow>=h+4
-    const top=below?tip.anchorBottom+10:tip.anchorTop-10
-    setTipPos({cx,top,arrowPct,below})
-  },[tip])
-
-  function makeTip(rect:{left:number;right:number;top:number;bottom:number;width:number;height:number},data:TipData){
-    if(hideTimer.current)clearTimeout(hideTimer.current)
-    setTipPos(null)
-    setTip({...data,below:true,cx:rect.left+rect.width/2,anchorTop:rect.top,anchorBottom:rect.bottom})
-  }
-  function showTip(e:React.MouseEvent,data:TipData){const r=(e.currentTarget as Element).getBoundingClientRect();makeTip(r,data)}
-  const hideTip=()=>{hideTimer.current=setTimeout(()=>setTip(null),500)}
-  const cancelHide=()=>{if(hideTimer.current)clearTimeout(hideTimer.current)}
+  const{makeTip,showTip,hideTip,tooltip}=useCalendarTooltip(asideRef)
 
   const dateSet=new Set(dates.map(toISO)),excludedCategoryIds=new Set(settings.insightsExcludedCategoryIds??[]),insightCategories=categories.filter(c=>!excludedCategoryIds.has(c.id)),insightCategoryIds=new Set(insightCategories.map(c=>c.id));const scoped=blocks.filter(b=>b.layer===layer&&dateSet.has(b.date)&&!b.allDay&&insightCategoryIds.has(b.categoryId));const plan=blocks.filter(b=>b.layer==='plan'&&dateSet.has(b.date)&&!b.allDay&&insightCategoryIds.has(b.categoryId));const actual=blocks.filter(b=>b.layer==='actual'&&dateSet.has(b.date)&&!b.allDay&&insightCategoryIds.has(b.categoryId))
   const allocated=uniqueHours(scoped),available=(settings.sleepHour-settings.wakeHour)*dates.length,unallocated=Math.max(0,available-allocated)
@@ -94,6 +65,6 @@ export function InsightsPanel({blocks,categories,groups,settings,dates,layer,onC
       <div className="insight-note"><b>{allocated>available?'Beyond waking hours':unallocated>available*.45?'Plenty of breathing room':'A full week'}</b><p>{allocated>available?`${(allocated-available).toFixed(1)}h of blocks fall outside your waking hours. Overlapping blocks are counted once.`:`${unallocated.toFixed(1)} hours remain open between your configured wake and sleep times. Overlapping blocks are counted once.`}</p></div>
     </div>
   </div>
-  {tip&&createPortal(<div ref={tipRef} className={`insights-tip ${(tipPos?.below??true)?'tip-below':'tip-above'}${tipPos?'':' tip-placing'}`} style={{left:tipPos?.cx??tip.cx,top:tipPos?.top??(tip.anchorBottom+10),'--tip-color':tip.color??'#e0e1e3','--arrow-x':`${tipPos?.arrowPct??50}%`} as React.CSSProperties} onMouseEnter={cancelHide} onMouseLeave={hideTip}>{tip.title&&<div className="tip-head"><b>{tip.title}</b>{tip.timeRight&&<span className="tip-right">{tip.timeRight}</span>}</div>}{tip.lines.map((l,i)=><span key={i} className="tip-line"><span className="tip-left"><span className={l.hi?'tip-hi':''}>{l.text}</span>{l.mid&&<span className="tip-mid"> {l.mid}</span>}</span>{l.right&&<span className="tip-lr">{l.right}</span>}</span>)}</div>,document.body)}
+  {tooltip}
   </aside>
 }

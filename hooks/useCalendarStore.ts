@@ -47,6 +47,7 @@ const OUTBOX_LEASE = 60000;
 const BUFFERED_BLOCK_FIELDS = new Set<keyof CalendarBlock>(["title", "notes"]);
 const BUFFERED_SETTING_FIELDS = new Set<keyof CalendarSettings>([
   "hourScale",
+  "monthScale",
   "underlayOpacity",
 ]);
 export type SyncStatus =
@@ -1063,6 +1064,9 @@ export function useCalendarStore(user: User) {
             insightsExcludedCategoryIds: (
               v.settings.insightsExcludedCategoryIds ?? []
             ).filter((categoryId) => categoryId !== id),
+            favoriteCategoryIds: (
+              v.settings.favoriteCategoryIds ?? []
+            ).filter((categoryId) => categoryId !== id),
           },
         };
       }),
@@ -1090,8 +1094,11 @@ export function useCalendarStore(user: User) {
     (sourceId: string, targetId: string) =>
       commit((v) => {
         const excluded = new Set(v.settings.insightsExcludedCategoryIds ?? []);
+        const favorites = new Set(v.settings.favoriteCategoryIds ?? []);
         if (excluded.has(sourceId)) excluded.add(targetId);
         excluded.delete(sourceId);
+        if (favorites.has(sourceId)) favorites.add(targetId);
+        favorites.delete(sourceId);
         return {
           ...v,
           categories: v.categories.filter((c) => c.id !== sourceId),
@@ -1105,6 +1112,7 @@ export function useCalendarStore(user: User) {
                 ? targetId
                 : v.settings.defaultCategoryId,
             insightsExcludedCategoryIds: Array.from(excluded),
+            favoriteCategoryIds: Array.from(favorites),
           },
         };
       }),

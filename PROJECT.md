@@ -54,10 +54,10 @@ CalendarBlock
 CalendarCategory  — id, name, color (hex), visible, groupId?
 CalendarGroup     — id, name
 CalendarSettings  — wakeHour, sleepHour, snapMinutes, defaultDuration,
-                    hourScale, showWeekends, weekStartsOn (Mon=0 … Sun=6),
+                    hourScale, monthScale, showWeekends, weekStartsOn (Mon=0 … Sun=6),
                     timeFormat, underlayOpacity,
                     defaultCategoryId, planLabel?, actualLabel?,
-                    autoFormatTitles?, insightsExcludedCategoryIds?
+                    autoFormatTitles?, insightsExcludedCategoryIds?, favoriteCategoryIds?
 ```
 
 The database representation is normalized rather than storing this root object as one JSON blob:
@@ -84,7 +84,9 @@ Workspace/profile tables are scoped by `user_id`; foreign keys preserve group/ca
 - **Layers** — Plan (intent) vs Actual (reality). Toggled in `AppHeader`. Timed blocks belong to one visible layer; all-day blocks retain their stored layer but render in both views. "Fill from plan" copies unmatched timed planned blocks into Actual for either the displayed range or an individual day from its day-header button. Plan blocks can also appear as an opacity-adjustable underlay in Actual, with the maximum matching their Plan-view opacity.
 - **Draft blocks** — A block created by dragging on the timed grid or by clicking open space in a day's all-day slot stays as a draft until it has a non-empty title or non-default category. Drafts remain draggable without being persisted and are discarded on close.
 - **Cross-midnight timed blocks** — Drag creation can continue into later day columns. The block remains one event anchored to its start date; `end` stores elapsed decimal hours from that date and may exceed 24 (for example, 11 PM–1 AM is `start: 23, end: 25`). Week/day and month views render a segment on each covered date, while selection, movement, resizing, recurrence, inspector edits, and persistence operate on the single block.
-- **All-day blocks** — All-day blocks are always visible in both Plan and Actual and are excluded from Plan-to-Actual copying. Hovering a day's unused all-day space reveals a centered plus without changing the normal calendar cursor, and the whole open area creates an event. Populated days keep a compact add area. All-day blocks reuse `EventCard` and `EventMenu`, never render resize controls, can move between days, and can be reordered within a day; their hidden start-minute value stores that visual order.
+- **All-day blocks** — All-day blocks are always visible in both Plan and Actual and are excluded from Plan-to-Actual copying. In month view they use a filled category-colored treatment and sort ahead of timed events, ensuring they receive priority in the four visible event rows. Hovering a day's unused all-day space reveals a centered plus without changing the normal calendar cursor, and the whole open area creates an event. Populated days keep a compact add area. All-day blocks reuse `EventCard` and `EventMenu`, never render resize controls, can move between days, and can be reordered within a day; their hidden start-minute value stores that visual order. In week/day views, dragging an all-day block into the timed grid converts it to a timed block at the snapped drop time using the configured default duration, while dragging a timed block into an all-day slot converts it to all-day and places it at the indicated order.
+- **Month scrolling and overflow** — Month view is a bidirectionally infinite, virtualized stream of fixed-height week rows with a visually hidden scrollbar. Only visible weeks plus a small overscan buffer are mounted. `monthScale` controls those rows through the same header slider used for hour height in week/day views and has its own Settings control. The date cell at the horizontal and vertical center of the viewport determines the focused month and updates the app anchor, header label, and sidebar mini-calendar. Clicking a day opens its containing week in Week view. Month cells show as many prioritized event rows as fit, reserving space for `+x more` only when events overflow. Compact timed labels use `h:mm` with a small-caps AM/PM suffix. The overflow control opens the shared Insights tooltip with every all-day and active-layer timed event for that date, colored by calendar and labeled with time and duration.
+- **Favorite calendars** — A calendar can be favorited or unfavorited from its right-click menu. Favorite IDs persist in settings, are removed on calendar deletion, and transfer to the merge target when a favorite calendar is merged. Month cells render each event once in the order all-day, favorite timed, then ordinary timed; the overflow tooltip remains neutral with all-day events followed by all timed events chronologically. All-day and favorite timed events share the filled category-color highlight without a left accent bar.
 - **Default category** — One calendar is marked default; new blocks use it automatically.
 - **Calendar visibility** — Hidden calendars remain available in the calendar sidebar and Settings, but are omitted from calendar-selection dropdowns and menus.
 - **Day bounds** — The configured wake and sleep times shade unavailable hours and draw Daily-load-style dashed rules across the timed-event grid at both boundaries. The timed grid adds a viewport-sized bottom scroll buffer when needed so the configured wake time can always align with the top of the scroll pane, including tall or resized layouts.
@@ -114,11 +116,12 @@ On startup, tabs identify live sibling tabs through `BroadcastChannel` before cl
 app/page.tsx  (dynamic, ssr:false)
 ├── AuthScreen.tsx               ← sign-in, signup, confirmation guidance, recovery, and configuration gate
 └── CalendarApp.tsx              ← authenticated root; owns UI state and keeps the cached/empty workspace visible during locked hydration
-    ├── AppHeader.tsx            ← layer switch (right-click opens GroupMenu for rename), nav, tools
+    ├── AppHeader.tsx            ← layer switch (right-click opens GroupMenu for rename), segmented month/week/day view switch, nav, tools
     ├── Sidebar.tsx              ← mini-calendar, calendar/group list, DnD reorder
     │   └── FloatingMenus.tsx   ← CalendarMenu, GroupMenu, CalendarAreaMenu
     ├── CalendarToolbar.tsx      ← quote editor, density, copy-plan-to-actual
-    ├── WeekGrid.tsx / MonthView.tsx  ← main grid; timed drag-to-create/move/resize, all-day creation/move/reorder; Actual day headers can fill that day from Plan
+    ├── WeekGrid.tsx / MonthView.tsx  ← main grid; timed drag-to-create/move/resize, all-day creation/move/reorder; MonthView provides bidirectional virtual week scrolling and reports its focused month; month overflow tooltips list every event for the day; Actual day headers can fill that day from Plan
+    ├── CalendarTooltip.tsx        ← shared portal tooltip used by month overflow and Insights visualizations
     ├── EventCard.tsx            ← rendered block and drag-creation preview on the grid
     ├── EventInspector.tsx       ← right panel when a block is selected
     │   └── RecurrenceEditor.tsx ← daily/weekly/multiple-days repeat controls
@@ -139,6 +142,7 @@ Supporting modules in `lib/calendar/`:
 - `date.ts` — date helpers (formatTime, configurable-start weekDates/startOfWeek, toISO, etc.)
 - `block-time.ts` — cross-midnight block clock conversion and per-day display segmentation
 - `layout.ts` — timed-event overlap lanes, including Notion-style thin-event overlays
+- `month-layout.ts` — height-based month-cell event capacity and overflow reservation
 - `recurrence.ts` — series generation plus scoped update/delete transforms
 - `seed.ts` — demo data loader + normalizer
 - `color-model.ts` — color manipulation utilities
