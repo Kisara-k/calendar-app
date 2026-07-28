@@ -122,13 +122,13 @@ app/page.tsx  (dynamic, ssr:false)
     ├── CalendarToolbar.tsx      ← quote editor, density, copy-plan-to-actual
     ├── WeekGrid.tsx / MonthView.tsx  ← main grid; timed drag-to-create/move/resize, all-day creation/move/reorder; MonthView provides bidirectional virtual week scrolling and reports its focused month; month overflow tooltips list every event for the day; Actual day headers can fill that day from Plan
     ├── CalendarTooltip.tsx        ← shared portal tooltip used by month overflow and Insights visualizations
-    ├── EventCard.tsx            ← rendered block and drag-creation preview on the grid
+    ├── EventCard.tsx            ← rendered block and drag-creation preview on the grid; timed cards preserve an empty title row when the title is blank
     ├── EventInspector.tsx       ← right panel when a block is selected
     │   └── RecurrenceEditor.tsx ← daily/weekly/multiple-days repeat controls
     │       └── WeekdayPicker.tsx ← shared compact weekday selector, also used by Settings
     ├── RecurrenceScopeDialog.tsx ← recurring edit/delete scope picker
     ├── FloatingMenus.tsx        ← EventMenu (right-click on block)
-    ├── InsightsPanel.tsx        ← weekly stats panel; omits calendars excluded in settings from every metric
+    ├── InsightsPanel.tsx        ← weekly stats panel; omits calendars excluded in settings from every metric; Daily load reuses the By calendar grouped order
     ├── SettingsPanel.tsx        ← settings, collapsed weekly-insights exclusions via the shared grouped calendar list, import/export JSON, recently deleted
     ├── SearchPanel.tsx
     ├── ShortcutsPanel.tsx
