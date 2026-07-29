@@ -81,7 +81,7 @@ Workspace/profile tables are scoped by `user_id`; foreign keys preserve group/ca
 
 ## Core Concepts
 
-- **Layers** — Plan (intent) vs Actual (reality). Toggled in `AppHeader`. Timed blocks belong to one visible layer; all-day blocks retain their stored layer but render in both views. "Fill from plan" copies unmatched timed planned blocks into Actual for either the displayed range or an individual day from its day-header button. Plan blocks can also appear as an opacity-adjustable underlay in Actual, with the maximum matching their Plan-view opacity.
+- **Layers** — Actual (reality) is the default layer and appears before Plan (intent) in `AppHeader`; both use the shared application accent when selected. The 1/2 shortcuts follow that order. Timed blocks belong to one visible layer; all-day blocks retain their stored layer but render in both views. "Fill from plan" copies unmatched timed planned blocks into Actual for either the displayed range or an individual day from its day-header button. Plan blocks can also appear as an opacity-adjustable underlay in Actual, with the maximum matching their Plan-view opacity.
 - **Draft blocks** — A block created by dragging on the timed grid or by clicking open space in a day's all-day slot stays as a draft until it has a non-empty title or non-default category. Calendar assignment promotes the draft through the same lifecycle whether it comes from `EventInspector` or `EventMenu`. Drafts remain draggable without being persisted and are discarded on close.
 - **Cross-midnight timed blocks** — Drag creation can continue into later day columns. The block remains one event anchored to its start date; `end` stores elapsed decimal hours from that date and may exceed 24 (for example, 11 PM–1 AM is `start: 23, end: 25`). Week/day and month views render a segment on each covered date, while selection, movement, resizing, recurrence, inspector edits, and persistence operate on the single block.
 - **All-day blocks** — All-day blocks are always visible in both Plan and Actual and are excluded from Plan-to-Actual copying. In month view they use a filled category-colored treatment and sort ahead of timed events, ensuring they receive priority in the four visible event rows. Hovering a day's unused all-day space reveals a centered plus without changing the normal calendar cursor, and the whole open area creates an event. Populated days keep a compact add area. All-day blocks reuse `EventCard` and `EventMenu`, never render resize controls, can move between days, and can be reordered within a day; their hidden start-minute value stores that visual order. In week/day views, dragging an all-day block into the timed grid converts it to a timed block at the snapped drop time using the configured default duration, while dragging a timed block into an all-day slot converts it to all-day and places it at the indicated order.
@@ -126,9 +126,8 @@ app/page.tsx  (dynamic, ssr:false)
     ├── EventInspector.tsx       ← right panel when a block is selected
     │   └── RecurrenceEditor.tsx ← daily/weekly/multiple-days repeat controls
     │       └── WeekdayPicker.tsx ← shared compact weekday selector, also used by Settings
-    ├── RecurrenceScopeDialog.tsx ← recurring edit/delete scope picker
     ├── FloatingMenus.tsx        ← EventMenu (right-click on block)
-    ├── InsightsPanel.tsx        ← weekly stats panel; omits calendars excluded in settings from every metric; Daily load reuses the By calendar grouped order
+    ├── InsightsPanel.tsx        ← weekly stats panel; omits calendars excluded in settings from every metric; Daily load stacks the By calendar grouped order bottom-to-top
     ├── SettingsPanel.tsx        ← settings, collapsed weekly-insights exclusions via the shared grouped calendar list, import/export JSON, recently deleted
     ├── SearchPanel.tsx
     ├── ShortcutsPanel.tsx
@@ -187,17 +186,17 @@ All three floating context menus (`CalendarMenu`, `GroupMenu`, `EventMenu`) shar
 ### Recurring events
 - `Multiple days a week` preselects the event's creation weekday, permits any non-empty weekday combination, and accepts an unrestricted number of weeks. Every day and every week are presets of the same weekly rule.
 - New repeat configurations have no prefilled duration. `Every day` accepts weeks and days, materializing `weeks × 7 + days` daily occurrences.
-- Moving or resizing a recurring occurrence immediately applies to `This event only`. A six-second toast offers `This and all following events`, `All events`, and Undo; choosing a broader scope amends the original grid change so it remains one undo-history entry. Deleting and editing still prompt for scope.
+- Moving, resizing, editing, or deleting a recurring occurrence immediately applies to `This event only`. A six-second toast offers `This and all following events`, `All events`, and Undo; choosing a broader scope amends the original change so it remains one undo-history entry.
 - `This event only` creates an exception without changing its siblings.
 - `This and all following events` severs the series at the cut point. The head (earlier occurrences) keeps the original `seriesId` and its existing anchors. The tail (selected occurrence and all later) becomes a fully independent series with a new `seriesId`, occurrence indexes restarted from 0, and fresh immutable anchors equal to the post-move dates and times. Delete-all from a tail block removes only the tail series; delete-all from a head block removes only the head series.
 - Following/all schedule transforms are absolute assignments. Every in-scope occurrence receives the selected event's final start/end values, and date moves rebuild each in-scope date from its immutable `recurrenceDate` plus the selected date shift. For `following`, the tail's new `recurrenceDate` anchors are set to the post-move dates. The canonical recurrence anchors on the head and on `only` exceptions are never rewritten. This intentionally removes prior schedule exceptions inside the chosen scope; edits to non-schedule fields leave those exceptions untouched.
 - When a date move shifts the day of the week, the `recurrence.weekdays` array is shifted by the same net weekday delta on all in-scope occurrences (`following` updates the tail only; `all` updates every occurrence). Daily-mode series and shifts that are multiples of 7 days are unaffected.
-- The inspector remembers the chosen edit scope for the selected recurring event until the inspector closes or selection changes, keeping live-save title editing to one scope prompt.
+- The inspector remembers a broader edit scope chosen from the toast for the selected recurring event until the inspector closes or selection changes.
 - Repeat-rule changes regenerate the series atomically through `commit()`; choosing `Does not repeat` detaches the selected occurrence.
 
 ### Undo
 - Ctrl+Z / Ctrl+Shift+Z traverse full undo/redo history (all `commit()` calls)
-- Undo toasts cover block deletion and recurring-event moves (the move toast also offers the two broader recurrence scopes)
+- Undo toasts cover block deletion and every scoped recurring-event edit, move, resize, or delete (the recurring-event toast also offers the two broader recurrence scopes)
 - Calendar soft-delete uses Settings > Recently deleted (persistent recovery)
 - An externally refreshed database snapshot clears local undo/redo history so stale snapshots cannot reverse changes made on another device. Acknowledging this client's own background writes does not clear history.
 
