@@ -142,7 +142,7 @@ Supporting modules in `lib/calendar/`:
 - `constants.ts` — color palette, default settings
 - `date.ts` — date helpers (formatTime, configurable-start weekDates/startOfWeek, toISO, etc.)
 - `block-time.ts` — cross-midnight block clock conversion and per-day display segmentation
-- `layout.ts` — timed-event overlap lanes, including Notion-style thin-event overlays
+- `layout.ts` — timed-event vertical positioning and overlap lanes, including Notion-style thin-event overlays
 - `month-layout.ts` — height-based month-cell event capacity and overflow reservation
 - `recurrence.ts` — series generation plus scoped update/delete transforms
 - `seed.ts` — demo data loader + normalizer

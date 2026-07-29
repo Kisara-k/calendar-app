@@ -5,7 +5,7 @@ const ts=require('typescript')
 
 require.extensions['.ts']=(module,filename)=>{const source=fs.readFileSync(filename,'utf8'),output=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,esModuleInterop:true}}).outputText;module._compile(output,filename)}
 
-const {overlapLayout}=require('../lib/calendar/layout.ts')
+const {overlapLayout,timedEventVerticalPosition}=require('../lib/calendar/layout.ts')
 const {monthEventLayout,monthEventPriority}=require('../lib/calendar/month-layout.ts')
 const order=new Map([['work',0]])
 const block=(id,start,end)=>({id,date:'2026-07-15',start,end,title:id,categoryId:'work',layer:'plan'})
@@ -23,6 +23,8 @@ test('an event overlapping exactly 0.75x of the background event overlays it',()
 test('an event overlapping more than 0.75x of the background event shares a column',()=>{const layout=overlapLayout([block('background',9,11),block('peer',9.49,12)],order);assert.deepEqual(layout.get('background'),{left:0,width:50,overlay:false});assert.deepEqual(layout.get('peer'),{left:50,width:50,overlay:false})})
 
 test('overlay eligibility ignores total duration when the actual intersection is small',()=>{const layout=overlapLayout([block('operational-research',4,6),block('gavel',5.5,8)],order);assert.deepEqual(layout.get('operational-research'),{left:0,width:100,overlay:false});assert.deepEqual(layout.get('gavel'),{left:4,width:96,overlay:true})})
+
+test('continuous timed events share exact time edges with a two-pixel bottom inset',()=>{const dayHeight=24*57,events=[[9.25,10],[10,10.75],[10.75,11.25],[11.25,13]].map(([start,end])=>timedEventVerticalPosition(start,end,57));const gaps=events.slice(1).map((event,index)=>event.top-(dayHeight-events[index].bottom-2));assert.deepEqual(gaps,[2,2,2])})
 
 test('month event rows expand with cell height and reserve room for overflow',()=>{assert.deepEqual(monthEventLayout(75,2),{visible:2,showMore:false});assert.deepEqual(monthEventLayout(75,5),{visible:1,showMore:true});assert.deepEqual(monthEventLayout(150,5),{visible:5,showMore:false});assert.deepEqual(monthEventLayout(150,8),{visible:5,showMore:true})})
 
