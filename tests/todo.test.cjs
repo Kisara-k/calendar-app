@@ -1,0 +1,21 @@
+const fs=require('node:fs')
+const test=require('node:test')
+const assert=require('node:assert/strict')
+const ts=require('typescript')
+
+require.extensions['.ts']=(module,filename)=>{const source=fs.readFileSync(filename,'utf8'),output=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,esModuleInterop:true}}).outputText;module._compile(output,filename)}
+
+const {linkedAllocatedMinutes,recurringScopeIds}=require('../lib/calendar/todo.ts')
+const blocks=[
+  {id:'a',date:'2026-07-01',start:9,end:10.5,title:'A',categoryId:'work',layer:'plan',seriesId:'series',occurrenceIndex:0},
+  {id:'b',date:'2026-07-08',start:9,end:11,title:'B',categoryId:'work',layer:'plan',seriesId:'series',occurrenceIndex:1},
+  {id:'c',date:'2026-07-15',start:9,end:10,title:'C',categoryId:'work',layer:'plan',seriesId:'series',occurrenceIndex:2},
+  {id:'all-day',date:'2026-07-15',start:0,end:24,title:'Day',categoryId:'work',layer:'plan',allDay:true},
+]
+
+test('to-do allocation sums linked timed events and ignores all-day placeholders',()=>{assert.equal(linkedAllocatedMinutes(blocks,['a','b','all-day']),210)})
+test('recurring to-do links use the same only, following, and all scopes as event edits',()=>{assert.deepEqual(recurringScopeIds(blocks,blocks[1],'only'),['b']);assert.deepEqual(recurringScopeIds(blocks,blocks[1],'following'),['b','c']);assert.deepEqual(recurringScopeIds(blocks,blocks[1],'all'),['a','b','c'])})
+test('weekly insights remains the fallback and the to-do header button toggles a closable panel',()=>{const app=fs.readFileSync(require.resolve('../components/calendar/CalendarApp.tsx'),'utf8'),header=fs.readFileSync(require.resolve('../components/calendar/AppHeader.tsx'),'utf8');assert.ok(app.includes("utilityPanel&&utilityPanel!=='insights'?utilityPanel:'insights'"));assert.ok(header.includes("p.panel==='todos'?null:'todos'"))})
+test('task and list names edit inline without a duplicate drag overlay',()=>{const panel=fs.readFileSync(require.resolve('../components/calendar/TodoPanel.tsx'),'utf8'),css=fs.readFileSync(require.resolve('../app/globals.css'),'utf8');assert.ok(panel.includes('<input className="todo-title"'));assert.ok(!panel.includes('todo-title-input'));assert.ok(!panel.includes('setExpandedIds(current=>new Set(current).add'));assert.ok(!panel.includes('DragOverlay')&&!panel.includes('activeId'));assert.ok(!css.includes('.todo-drag-overlay'));assert.ok(panel.includes('onBlur={commitTitle} onKeyDown={e=>{e.stopPropagation()'));assert.ok(panel.includes('onBlur={commit} onKeyDown={e=>{e.stopPropagation()'))})
+test('to-do filtering defaults to unchecked and blank tasks stay visually blank',()=>{const panel=fs.readFileSync(require.resolve('../components/calendar/TodoPanel.tsx'),'utf8');assert.ok(panel.includes("useState<'all'|'open'|'done'>('open')"));assert.ok(panel.includes('view-switch todo-filter-switch'));assert.ok(!panel.includes('Untitled task'));assert.ok(panel.includes('className="todo-link-count"'));assert.ok(!panel.includes('FileText'))})
+test('calendar link mode is additive and shift-click links multiple events until Shift is released',()=>{const app=fs.readFileSync(require.resolve('../components/calendar/CalendarApp.tsx'),'utf8'),week=fs.readFileSync(require.resolve('../components/calendar/WeekGrid.tsx'),'utf8'),month=fs.readFileSync(require.resolve('../components/calendar/MonthView.tsx'),'utf8'),panel=fs.readFileSync(require.resolve('../components/calendar/TodoPanel.tsx'),'utf8'),css=fs.readFileSync(require.resolve('../app/globals.css'),'utf8');assert.ok(app.includes('if(beforeLinks.includes(block.id)){if(!keepLinking)setLinkingTodoId(null);return true}'));assert.ok(!app.includes("beforeLinks.includes(block.id)?'unlink':'link'"));assert.ok(app.includes("event.key==='Shift'&&shiftLinkedTodoRef.current"));assert.ok(week.includes('onOpen(segment.block.id,e.shiftKey)'));assert.ok(month.includes('onOpen(block.id,e.shiftKey)'));assert.ok(panel.includes('Shift-click to select multiple'));assert.match(css,/\.todo-link-mode\{position:absolute;[^}]*bottom:6px/);assert.ok(css.includes('--edit-box-bg'));assert.ok(!css.includes('order:-1'))})

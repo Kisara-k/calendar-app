@@ -59,7 +59,12 @@ CalendarSettings  — wakeHour, sleepHour, snapMinutes, defaultDuration,
                     hourScale, monthScale, showWeekends, weekStartsOn (Mon=0 … Sun=6),
                     timeFormat, underlayOpacity,
                     defaultCategoryId, planLabel?, actualLabel?,
-                    autoFormatTitles?, insightsExcludedCategoryIds?, favoriteCategoryIds?
+                    autoFormatTitles?, insightsExcludedCategoryIds?, favoriteCategoryIds?,
+                    todoTabs?, todoItems?
+
+TodoTab           — id, name
+TodoItem          — id, tabId, title, notes?, expectedMinutes?,
+                    linkedBlockIds?, completed?
 ```
 
 The database representation is normalized rather than storing this root object as one JSON blob:
@@ -91,8 +96,12 @@ Workspace/profile tables are scoped by `user_id`; foreign keys preserve group/ca
 - **Favorite calendars** — A calendar can be favorited or unfavorited from its right-click menu. Favorite IDs persist in settings, are removed on calendar deletion, and transfer to the merge target when a favorite calendar is merged. Month cells render each event once in the order all-day, favorite timed, then ordinary timed; the overflow tooltip remains neutral with all-day events followed by all timed events chronologically. All-day and favorite timed events share the filled category-color highlight without a left accent bar.
 - **Default category** — One calendar is marked default; new blocks use it automatically.
 - **Calendar visibility** — Hidden calendars remain available in the calendar sidebar and Settings, but their events are omitted from week, day, and month views and they are omitted from calendar-selection dropdowns and menus.
+- **Form controls** — Simple option menus use the shared app-themed `CalendarDropdown` rather than browser-native selects, keeping dark/light surfaces, selected states, and keyboard behavior consistent with the calendar. Specialized calendar assignment continues to use `CalendarSelect` and its grouped colored rows.
 - **Day bounds** — The configured wake and sleep times shade unavailable hours and draw Daily-load-style dashed rules across the timed-event grid at both boundaries. The timed grid adds a viewport-sized bottom scroll buffer when needed so the configured wake time can always align with the top of the scroll pane, including tall or resized layouts.
 - **Tabs (groups)** — Calendars are organized into collapsible tabs in the sidebar.
+- **Drag and reorder** — Every sortable collection uses the shared `LiveSortable` core for translated in-place feedback and active-row state. Sidebar sorting is vertical: horizontal translation is discarded and sortable scroll panes clip horizontal overflow, so a dragged row cannot grow the container's scroll width. While sorting, sortable rows stop receiving pointer hover states so intermediate targets do not highlight beneath the live drag preview. Size-derived drag scaling is normalized away so text and controls never stretch while crossing containers. Calendar groups/calendars and to-do tabs/items never render detached drag-overlay bubbles; calendar events likewise move their existing event surface directly.
+- **To-do lists** — The to-do header button temporarily replaces the default Weekly Insights panel and is closable back to Insights. A shared segmented control filters All, Unchecked, or Checked tasks, defaulting to Unchecked. Compact tasks live in collapsible, sortable tabs; tabs and items can be reordered, including moving items between tabs. Sorting uses the live transformed row only, without a duplicate drag overlay. Tab and task names are editable in place, and their keystrokes are isolated from the sortable keyboard sensor. New task names stay blank. Only the task's right chevron expands details, and new tasks remain collapsed. Expanded tasks expose an unlabeled event-style notes box plus a single compact expected-hours, event-link/count, and delete row. Dense colored linked-event rows reuse tooltip presentation, open the existing event inspector, and remove only the link. Collapsed rows show only completion, title, and allocated/expected time. Linked allocation sums timed events and ignores all-day placeholders.
+- **To-do event linking** — “Link event” enters a calendar selection mode; its compact instruction floats at the bottom of the to-do panel without reflowing tasks. A normal event click links once and exits without presenting an event list. Shift-click adds multiple events and keeps selection mode open until Shift is released after at least one successful link. Clicking an event already linked to the task is a no-op rather than an unlink; the linked-event row’s × is the explicit unlink control. A recurring event initially links only the clicked occurrence, then reuses the recurring-edit scope controls to broaden the same undo-history entry to “This and following” or “All events.” Deleting an event removes its task links; soft-deleting a calendar preserves them for restore.
 - **Recurring blocks** — Recurrence is materialized as ordinary blocks sharing one immutable `seriesId` and stable `occurrenceIndex` values. Immutable canonical date/start/end anchors identify each generated occurrence independently of one-off moves and are never rewritten by scoped updates. The weekly rule supports selected weekdays and an unrestricted week duration; daily repeats accept weeks plus days and once-weekly repeats are presets of the same rule.
 
 ---
@@ -108,6 +117,8 @@ Undo/redo walk `past`/`future`. Block deletion also shows a 6-second undo toast 
 
 `commit()` is also the optimistic persistence boundary. It updates React state immediately and writes the latest pending workspace to a per-tab IndexedDB delivery outbox. Non-text edits flush immediately; title/note edits coalesce for 350 ms (with a 1.5-second maximum wait). Shared sparse-diff logic computes only changed fields against the last acknowledged snapshot, and notes map to their own `block_notes` record. `apply_patch()` accepts that snapshot's expected revision, applies the diff atomically, and records the frozen mutation ID in a durable server-side idempotency ledger. The outbox entry is removed only after acknowledgement. Page-hide/close starts an immediate best-effort flush, and a close warning is attached only while edits remain unsaved.
 
+To-do tabs and items are synchronized inside the account settings JSON so they inherit the existing optimistic commit, quota, outbox, conflict, import/export, and undo behavior without requiring a separate persistence path. Their collapsed UI state is device-local in `localStorage`.
+
 On startup, tabs identify live sibling tabs through `BroadcastChannel` before claiming abandoned outbox records. Abandoned edits are merged with the latest consistent Supabase checkpoint using the same deterministic three-way merge as ordinary revision conflicts. Independent field changes rebase automatically; overlapping field edits and delete-versus-edit cases require an explicit server/device choice. This is crash/reload delivery protection, not an offline product contract: the UI is not designed for extended offline use, but a pending edit remains retryable after an interrupted tab. Private Realtime Broadcast events are content-free pull hints; correctness comes from ordered database deltas, so a missed message is recovered on reconnect, focus, or the next startup without downloading the full workspace.
 
 ---
@@ -122,14 +133,17 @@ app/page.tsx  (dynamic, ssr:false)
     ├── Sidebar.tsx              ← mini-calendar, calendar/group list, DnD reorder
     │   └── FloatingMenus.tsx   ← CalendarMenu, GroupMenu, CalendarAreaMenu
     ├── CalendarToolbar.tsx      ← quote editor, density, copy-plan-to-actual
+    ├── CalendarDropdown.tsx     ← shared themed listbox for simple option menus
     ├── WeekGrid.tsx / MonthView.tsx  ← main grid; timed drag-to-create/move/resize, all-day creation/move/reorder; MonthView provides bidirectional virtual week scrolling and reports its focused month; month overflow tooltips list every event for the day; Actual day headers can fill that day from Plan
-    ├── CalendarTooltip.tsx        ← shared portal tooltip used by month overflow and Insights visualizations
+    ├── CalendarTooltip.tsx        ← shared tooltip and colored line-row renderer used by month overflow, Insights visualizations, and linked to-do events
+    ├── LiveSortable.ts            ← shared in-place sortable behavior; sensors, transform, collision fallback, and active state
     ├── EventCard.tsx            ← rendered block and drag-creation preview on the grid; timed cards preserve an empty title row when the title is blank
     ├── EventInspector.tsx       ← right panel when a block is selected
     │   └── RecurrenceEditor.tsx ← daily/weekly/multiple-days repeat controls
     │       └── WeekdayPicker.tsx ← shared compact weekday selector, also used by Settings
     ├── FloatingMenus.tsx        ← EventMenu (right-click on block)
-    ├── InsightsPanel.tsx        ← weekly stats panel; omits calendars excluded in settings from every metric; Daily load stacks the By calendar grouped order bottom-to-top
+    ├── TodoPanel.tsx            ← closable right panel; sortable/collapsible task tabs, inline task editing, estimates, notes, completion, compact linked events, and direct event-link mode
+    ├── InsightsPanel.tsx        ← default weekly stats panel; accessible from the command menu/shortcut; omits calendars excluded in settings from every metric; Daily load stacks the By calendar grouped order bottom-to-top
     ├── SettingsPanel.tsx        ← settings, device-local appearance choice, collapsed weekly-insights exclusions via the shared grouped calendar list, import/export JSON, recently deleted
     ├── SearchPanel.tsx
     ├── ShortcutsPanel.tsx
@@ -145,6 +159,7 @@ Supporting modules in `lib/calendar/`:
 - `layout.ts` — timed-event overlap lanes, including Notion-style thin-event overlays
 - `month-layout.ts` — height-based month-cell event capacity and overflow reservation
 - `recurrence.ts` — series generation plus scoped update/delete transforms
+- `todo.ts` — linked-time calculation and shared recurring-link scope selection
 - `seed.ts` — demo data loader + normalizer
 - `color-model.ts` — color manipulation utilities plus the shared cached perceptual calendar-color transform
 
@@ -180,6 +195,8 @@ All three floating context menus (`CalendarMenu`, `GroupMenu`, `EventMenu`) shar
 - Dismiss (click outside) triggers blur first, so commit fires naturally before close
 
 `EventInspector` title is **live-save** (every keystroke → store). This is intentional — the panel shows "Changes save automatically" and the draft-block lifecycle depends on it.
+
+EventInspector outcome buttons are also live-save. Clicking an inactive outcome selects it; clicking the selected outcome again clears it.
 
 ### Delete
 | Target | Pattern |
@@ -230,7 +247,7 @@ All three floating context menus (`CalendarMenu`, `GroupMenu`, `EventMenu`) shar
 - Soft-deleted calendars remain as calendar rows with `deleted_at`; their blocks stay normalized and are reattached on restore.
 
 ### Tests
-- `npm test` runs persistent Node regression tests. Recurrence tests cover multi-day and daily generation, absolute schedule assignment, immutable canonical anchors, cross-day moves, mixed scoped edits/deletes, all pairs of successive following cuts, and all three-following permutations followed by all-events moves from every source occurrence. Sync tests cover strict cursor validation, changed-row replacement, tombstones, collapsed multi-revision pulls, two-browser convergence, same-row disjoint edits, same-field conflicts, both conflict choices, delete-versus-edit conflicts, nested settings merges, and object-order stability.
+- `npm test` runs persistent Node regression tests. Recurrence tests cover multi-day and daily generation, absolute schedule assignment, immutable canonical anchors, cross-day moves, mixed scoped edits/deletes, all pairs of successive following cuts, and all three-following permutations followed by all-events moves from every source occurrence. To-do tests cover timed allocation and recurring link scopes. Sync tests cover strict cursor validation, changed-row replacement, tombstones, collapsed multi-revision pulls, two-browser convergence, same-row disjoint edits, same-field conflicts, both conflict choices, delete-versus-edit conflicts, nested settings merges, and object-order stability.
 - `tests/incremental-sync.sql` is a rollback-only linked-database integration test. It verifies separate event/note delta transfer, field-level event and note updates, idempotent retry, stale-browser rejection, delete tombstones, collapsed insert/delete history, and empty current-cursor pulls without leaving test data behind.
 
 ---

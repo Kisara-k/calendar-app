@@ -8,6 +8,7 @@ import type {
   CalendarData,
   CalendarSettings,
   Layer,
+  TodoItem,
 } from "@/lib/calendar/types";
 import type { RecurrenceRule, RecurrenceScope } from "@/lib/calendar/types";
 import {
@@ -822,6 +823,7 @@ export function useCalendarStore(user: User) {
       commit((v) => ({
         ...v,
         blocks: v.blocks.filter((b) => !ids.includes(b.id)),
+        settings: { ...v.settings, todoItems: (v.settings.todoItems ?? []).map((item) => ({ ...item, linkedBlockIds: (item.linkedBlockIds ?? []).filter((id) => !ids.includes(id)) })) },
       }));
       setUndo({
         label: `Deleted ${ids.length === 1 ? "block" : `${ids.length} blocks`}`,
@@ -836,7 +838,10 @@ export function useCalendarStore(user: User) {
       replaceCommitId?: string,
     ) =>
       commit(
-        (v) => ({ ...v, blocks: removeScoped(v.blocks, block, scope) }),
+        (v) => {
+          const blocks=removeScoped(v.blocks,block,scope),remaining=new Set(blocks.map(item=>item.id));
+          return { ...v, blocks, settings: { ...v.settings, todoItems: (v.settings.todoItems ?? []).map((item) => ({ ...item, linkedBlockIds: (item.linkedBlockIds ?? []).filter((id) => remaining.has(id)) })) } };
+        },
         "immediate",
         replaceCommitId,
       ),
@@ -1000,6 +1005,68 @@ export function useCalendarStore(user: User) {
     commit((v) => ({ ...v, groups: [...v.groups, group] }));
     return group;
   }, [commit]);
+  const createTodoTab = useCallback(() => {
+    const tab = { id: crypto.randomUUID(), name: "NEW LIST" };
+    commit((v) => ({ ...v, settings: { ...v.settings, todoTabs: [...(v.settings.todoTabs ?? []), tab] } }));
+    return tab;
+  }, [commit]);
+  const renameTodoTab = useCallback(
+    (id: string, name: string) =>
+      commit((v) => ({ ...v, settings: { ...v.settings, todoTabs: (v.settings.todoTabs ?? []).map((tab) => tab.id === id ? { ...tab, name } : tab) } }), "debounced"),
+    [commit],
+  );
+  const deleteTodoTab = useCallback(
+    (id: string) =>
+      commit((v) => {
+        const tabs = v.settings.todoTabs ?? [];
+        if (tabs.length <= 1) return v;
+        const fallback = tabs.find((tab) => tab.id !== id)!;
+        return { ...v, settings: { ...v.settings, todoTabs: tabs.filter((tab) => tab.id !== id), todoItems: (v.settings.todoItems ?? []).map((item) => item.tabId === id ? { ...item, tabId: fallback.id } : item) } };
+      }),
+    [commit],
+  );
+  const reorderTodoTabs = useCallback(
+    (sourceId: string, targetId: string) =>
+      commit((v) => {
+        const tabs = [...(v.settings.todoTabs ?? [])], from = tabs.findIndex((tab) => tab.id === sourceId), to = tabs.findIndex((tab) => tab.id === targetId);
+        if (from < 0 || to < 0 || from === to) return v;
+        const [moved] = tabs.splice(from, 1);
+        tabs.splice(to, 0, moved);
+        return { ...v, settings: { ...v.settings, todoTabs: tabs } };
+      }),
+    [commit],
+  );
+  const createTodoItem = useCallback(
+    (tabId: string) => {
+      const item: TodoItem = { id: crypto.randomUUID(), tabId, title: "" };
+      commit((v) => ({ ...v, settings: { ...v.settings, todoItems: [...(v.settings.todoItems ?? []), item] } }));
+      return item;
+    },
+    [commit],
+  );
+  const updateTodoItem = useCallback(
+    (id: string, patch: Partial<TodoItem>, buffered = false) =>
+      commit((v) => ({ ...v, settings: { ...v.settings, todoItems: (v.settings.todoItems ?? []).map((current) => current.id === id ? { ...current, ...patch } : current) } }), buffered ? "debounced" : "immediate"),
+    [commit],
+  );
+  const deleteTodoItem = useCallback(
+    (id: string) =>
+      commit((v) => ({ ...v, settings: { ...v.settings, todoItems: (v.settings.todoItems ?? []).filter((item) => item.id !== id) } })),
+    [commit],
+  );
+  const applyTodoItemLayout = useCallback(
+    (layout: { id: string; tabId: string }[]) =>
+      commit((v) => {
+        const byId = new Map((v.settings.todoItems ?? []).map((item) => [item.id, item]));
+        return { ...v, settings: { ...v.settings, todoItems: layout.map(({ id, tabId }) => ({ ...byId.get(id)!, tabId })) } };
+      }),
+    [commit],
+  );
+  const setTodoBlockLinks = useCallback(
+    (id: string, linkedBlockIds: string[], replaceCommitId?: string) =>
+      commit((v) => ({ ...v, settings: { ...v.settings, todoItems: (v.settings.todoItems ?? []).map((item) => item.id === id ? { ...item, linkedBlockIds } : item) } }), "immediate", replaceCommitId),
+    [commit],
+  );
   const renameCategory = useCallback(
     (id: string, name: string) =>
       commit((v) => ({
@@ -1229,6 +1296,15 @@ export function useCalendarStore(user: User) {
       reorderGroups,
       renameGroup,
       createGroup,
+      createTodoTab,
+      renameTodoTab,
+      deleteTodoTab,
+      reorderTodoTabs,
+      createTodoItem,
+      updateTodoItem,
+      deleteTodoItem,
+      applyTodoItemLayout,
+      setTodoBlockLinks,
       renameCategory,
       createCategory,
       colorCategory,
@@ -1273,6 +1349,15 @@ export function useCalendarStore(user: User) {
       reorderGroups,
       renameGroup,
       createGroup,
+      createTodoTab,
+      renameTodoTab,
+      deleteTodoTab,
+      reorderTodoTabs,
+      createTodoItem,
+      updateTodoItem,
+      deleteTodoItem,
+      applyTodoItemLayout,
+      setTodoBlockLinks,
       renameCategory,
       createCategory,
       colorCategory,
