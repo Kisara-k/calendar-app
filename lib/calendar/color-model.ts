@@ -4,14 +4,21 @@ export type Hsv={h:number;s:number;v:number}
 export type Oklch={l:number;c:number;h:number}
 export type HslChannel=keyof Hsl
 
-const LIGHT_EVENT_SOURCE_LIGHTNESS_MIN=.18
-const LIGHT_EVENT_SOURCE_LIGHTNESS_MAX=.92
-const LIGHT_EVENT_OUTPUT_LIGHTNESS_MIN=.54
-const LIGHT_EVENT_OUTPUT_LIGHTNESS_MAX=.76
-const LIGHT_EVENT_CHROMA_BOOST_MIN=1.26
-const LIGHT_EVENT_CHROMA_BOOST_MAX=1.42
-const LIGHT_EVENT_CHROMA_MAX=.28
+const LIGHT_CALENDAR_SOURCE_LIGHTNESS_MIN=.18
+const LIGHT_CALENDAR_SOURCE_LIGHTNESS_MAX=.92
+const LIGHT_CALENDAR_EVENT_OUTPUT_LIGHTNESS_MIN=.68
+const LIGHT_CALENDAR_EVENT_OUTPUT_LIGHTNESS_MAX=.84
+const LIGHT_CALENDAR_EVENT_CHROMA_BOOST_MIN=1.7
+const LIGHT_CALENDAR_EVENT_CHROMA_BOOST_MAX=2
+const LIGHT_CALENDAR_EVENT_CHROMA_MAX=.34
+const LIGHT_CALENDAR_NON_EVENT_OUTPUT_LIGHTNESS_MIN=.84
+const LIGHT_CALENDAR_NON_EVENT_OUTPUT_LIGHTNESS_MAX=.95
+const LIGHT_CALENDAR_NON_EVENT_CHROMA_BOOST_MIN=1.25
+const LIGHT_CALENDAR_NON_EVENT_CHROMA_BOOST_MAX=1.5
+const LIGHT_CALENDAR_NON_EVENT_CHROMA_MAX=.28
 const OKLCH_GAMUT_SEARCH_STEPS=14
+export type CalendarColorRole='event'|'nonEvent'
+const LIGHT_CALENDAR_ROLE_PARAMETERS:Record<CalendarColorRole,{lightnessMin:number;lightnessMax:number;chromaBoostMin:number;chromaBoostMax:number;chromaMax:number}>={event:{lightnessMin:LIGHT_CALENDAR_EVENT_OUTPUT_LIGHTNESS_MIN,lightnessMax:LIGHT_CALENDAR_EVENT_OUTPUT_LIGHTNESS_MAX,chromaBoostMin:LIGHT_CALENDAR_EVENT_CHROMA_BOOST_MIN,chromaBoostMax:LIGHT_CALENDAR_EVENT_CHROMA_BOOST_MAX,chromaMax:LIGHT_CALENDAR_EVENT_CHROMA_MAX},nonEvent:{lightnessMin:LIGHT_CALENDAR_NON_EVENT_OUTPUT_LIGHTNESS_MIN,lightnessMax:LIGHT_CALENDAR_NON_EVENT_OUTPUT_LIGHTNESS_MAX,chromaBoostMin:LIGHT_CALENDAR_NON_EVENT_CHROMA_BOOST_MIN,chromaBoostMax:LIGHT_CALENDAR_NON_EVENT_CHROMA_BOOST_MAX,chromaMax:LIGHT_CALENDAR_NON_EVENT_CHROMA_MAX}}
 
 export const clamp=(n:number,min=0,max=255)=>Math.max(min,Math.min(max,n))
 export const hexToRgb=(hex:string):Rgb|null=>{const v=hex.replace('#','');return /^[0-9a-f]{6}$/i.test(v)?{r:parseInt(v.slice(0,2),16),g:parseInt(v.slice(2,4),16),b:parseInt(v.slice(4,6),16)}:null}
@@ -31,5 +38,5 @@ function oklchToRgbUnclamped({l,c,h}:Oklch):Rgb{const radians=h*Math.PI/180,a=c*
 const inSrgb=({r,g,b}:Rgb)=>r>=0&&r<=255&&g>=0&&g<=255&&b>=0&&b<=255
 export function oklchToRgb(model:Oklch):Rgb{let candidate=oklchToRgbUnclamped(model);if(inSrgb(candidate))return candidate;let low=0,high=model.c;for(let index=0;index<OKLCH_GAMUT_SEARCH_STEPS;index++){const chroma=(low+high)/2,next=oklchToRgbUnclamped({...model,c:chroma});if(inSrgb(next)){low=chroma;candidate=next}else high=chroma}return candidate}
 const smoothstep=(from:number,to:number,value:number)=>{const t=clamp((value-from)/(to-from),0,1);return t*t*(3-2*t)}
-const lightEventColorCache=new Map<string,string>()
-export function deriveLightEventColor(color:string):string{const key=color.toUpperCase(),cached=lightEventColorCache.get(key);if(cached)return cached;const rgb=hexToRgb(key);if(!rgb)return color;const source=rgbToOklch(rgb),position=smoothstep(LIGHT_EVENT_SOURCE_LIGHTNESS_MIN,LIGHT_EVENT_SOURCE_LIGHTNESS_MAX,source.l),lightness=LIGHT_EVENT_OUTPUT_LIGHTNESS_MAX+(LIGHT_EVENT_OUTPUT_LIGHTNESS_MIN-LIGHT_EVENT_OUTPUT_LIGHTNESS_MAX)*position,chromaBoost=LIGHT_EVENT_CHROMA_BOOST_MAX+(LIGHT_EVENT_CHROMA_BOOST_MIN-LIGHT_EVENT_CHROMA_BOOST_MAX)*position,chroma=Math.min(source.c*chromaBoost,LIGHT_EVENT_CHROMA_MAX),derived=rgbToHex(oklchToRgb({l:lightness,c:chroma,h:source.h}));lightEventColorCache.set(key,derived);return derived}
+const lightCalendarColorCache=new Map<string,string>()
+export function deriveLightCalendarColor(color:string,role:CalendarColorRole):string{const sourceKey=color.toUpperCase(),key=`${role}:${sourceKey}`,cached=lightCalendarColorCache.get(key);if(cached)return cached;const rgb=hexToRgb(sourceKey);if(!rgb)return color;const source=rgbToOklch(rgb),position=smoothstep(LIGHT_CALENDAR_SOURCE_LIGHTNESS_MIN,LIGHT_CALENDAR_SOURCE_LIGHTNESS_MAX,source.l),parameters=LIGHT_CALENDAR_ROLE_PARAMETERS[role],lightness=parameters.lightnessMax+(parameters.lightnessMin-parameters.lightnessMax)*position,chromaBoost=parameters.chromaBoostMax+(parameters.chromaBoostMin-parameters.chromaBoostMax)*position,chroma=Math.min(source.c*chromaBoost,parameters.chromaMax),derived=rgbToHex(oklchToRgb({l:lightness,c:chroma,h:source.h}));lightCalendarColorCache.set(key,derived);return derived}
