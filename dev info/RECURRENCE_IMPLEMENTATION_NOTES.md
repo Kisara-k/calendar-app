@@ -81,20 +81,21 @@ With the old "no-sever" design, moving event 2 back 26 hours with `following`, t
 
 With the new design this scenario is different: the first `following` splits the series into head=[event1] and tail=[event2..N]. The second `following` on event1 splits the head into an empty head and a new single-event series for event1. The two events are in different series and may share a date — which is the user's explicit choice.
 
-### Live title editing prompted on every letter
+### Live title editing and scope selection
 
 `EventInspector` is intentionally live-save, so opening the scope dialog for every store update created one prompt per keystroke.
 
 What worked:
 
-- Ask for scope once per selected recurring event and inspector session.
-- Remember that scope until selection changes or the inspector closes.
+- Apply the first edit to `This event only` immediately and refresh one non-blocking scope toast as live edits continue.
+- Let the toast replace the latest one-event commit with `This and all following events` or `All events`, preserving one undo-history entry for that scope decision.
+- Remember a broader scope chosen from the toast until selection changes or the inspector closes.
 - Keep the inspector live-save contract unchanged.
 
 What did not work and must not be retried:
 
 - Removing live-save from `EventInspector`.
-- Prompting independently for every live update.
+- Opening a blocking scope dialog for live updates.
 
 ## Library research conclusion
 

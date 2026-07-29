@@ -830,17 +830,16 @@ export function useCalendarStore(user: User) {
     [commit],
   );
   const deleteRecurringBlock = useCallback(
-    (block: CalendarBlock, scope: RecurrenceScope) => {
-      commit((v) => ({ ...v, blocks: removeScoped(v.blocks, block, scope) }));
-      setUndo({
-        label:
-          scope === "only"
-            ? "Deleted event"
-            : scope === "following"
-              ? "Deleted this and following events"
-              : "Deleted recurring series",
-      });
-    },
+    (
+      block: CalendarBlock,
+      scope: RecurrenceScope,
+      replaceCommitId?: string,
+    ) =>
+      commit(
+        (v) => ({ ...v, blocks: removeScoped(v.blocks, block, scope) }),
+        "immediate",
+        replaceCommitId,
+      ),
     [commit],
   );
   const setBlockRecurrence = useCallback(
