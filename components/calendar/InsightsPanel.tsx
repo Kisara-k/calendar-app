@@ -36,7 +36,7 @@ export function InsightsPanel({blocks,categories,groups,settings,dates,layer,onC
   const categoryTotal=ringValues.reduce((a,x)=>a+x.value,0),ringScale=categoryTotal?allocated/categoryTotal:0
   let rCursor=0
   const ringSegs=ringValues.map(x=>{const startDeg=Math.min(360,rCursor/available*360);rCursor+=x.value*ringScale;const endDeg=Math.min(360,rCursor/available*360);return {...x,startDeg,endDeg}})
-  const ringGradient=`conic-gradient(${[...ringSegs.map(x=>`${x.color} ${x.startDeg/360*100}% ${Math.min(100,x.endDeg/360*100)}%`),`#2a2b2f ${Math.min(100,allocated/available*100)}% 100%`].join(',')})`
+  const ringGradient=`conic-gradient(${[...ringSegs.map(x=>`${x.color} ${x.startDeg/360*100}% ${Math.min(100,x.endDeg/360*100)}%`),`var(--insight-track) ${Math.min(100,allocated/available*100)}% 100%`].join(',')})`
 
   function renderAllocRow(c:CalendarCategory,plan:number,actual:number){
     const value=catVal({plan,actual}),events=scoped.filter(b=>b.categoryId===c.id).sort((a,b)=>a.date.localeCompare(b.date)||a.start-b.start),durationTotal=events.reduce((sum,b)=>sum+b.end-b.start,0),delta=actual-plan

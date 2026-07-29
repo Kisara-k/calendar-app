@@ -3,6 +3,7 @@ import dynamic from 'next/dynamic'
 import { AppLoading } from '@/components/AppLoading'
 import { AuthScreen } from '@/components/auth/AuthScreen'
 import { useSupabaseAuth } from '@/hooks/useSupabaseAuth'
+import { useTheme } from '@/hooks/useTheme'
 
 const CalendarApp = dynamic(
   () => import('@/components/calendar/CalendarApp').then(m => ({ default: m.CalendarApp })),
@@ -11,7 +12,8 @@ const CalendarApp = dynamic(
 
 export default function Home() {
   const auth=useSupabaseAuth()
+  const theme=useTheme()
   if(auth.configured&&auth.loading)return <AppLoading/>
   if(!auth.configured||!auth.user||auth.recovering)return <AuthScreen configured={auth.configured} loading={false} error={auth.error} recovery={auth.recovering} onSignIn={auth.signIn} onSignUp={auth.signUp} onForgot={auth.requestPasswordReset} onUpdatePassword={auth.updatePassword}/>
-  return <CalendarApp key={auth.user.id} user={auth.user} onSignOut={auth.signOut}/>
+  return <CalendarApp key={auth.user.id} user={auth.user} onSignOut={auth.signOut} themePreference={theme.preference} onThemePreference={theme.setPreference}/>
 }
