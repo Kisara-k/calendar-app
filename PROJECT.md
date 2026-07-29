@@ -20,12 +20,14 @@ This is an optimistic time-blocking web app. Users plan their week in the **Plan
 | Title casing | @danielhaim/titlecaser (AP style) |
 | Icons | lucide-react |
 | Color picker | react-colorful |
-| Styling | Single flat CSS file (`app/globals.css`) — no Tailwind |
+| Styling | Single flat CSS file (`app/globals.css`) — no Tailwind; semantic dark/light theme tokens |
 | State | Custom hook (`useCalendarStore`) — no external state library |
 | Authentication | Supabase Auth with verified email + password and unique account usernames |
 | Persistence | Supabase Postgres + private Realtime Broadcast, with an acknowledged-snapshot IndexedDB cache and pending-write delivery outbox |
 
 SSR is disabled for the entire app via `dynamic(..., { ssr: false })` in `app/page.tsx` because all state is client-only.
+
+Appearance supports System, Light, and Dark modes. The preference is device-local in `localStorage` (`tempo-theme`), is applied to the root document before React renders to prevent a theme flash, and intentionally does not enter synchronized calendar settings or undo history. A calendar's stored color and editor lightness remain the dark-mode ground truth; light-mode events derive a cached, hue-preserving OKLCH display color with smoothly reversed lightness, controlled boosted chroma, and sRGB gamut mapping.
 
 ---
 
@@ -128,7 +130,7 @@ app/page.tsx  (dynamic, ssr:false)
     │       └── WeekdayPicker.tsx ← shared compact weekday selector, also used by Settings
     ├── FloatingMenus.tsx        ← EventMenu (right-click on block)
     ├── InsightsPanel.tsx        ← weekly stats panel; omits calendars excluded in settings from every metric; Daily load stacks the By calendar grouped order bottom-to-top
-    ├── SettingsPanel.tsx        ← settings, collapsed weekly-insights exclusions via the shared grouped calendar list, import/export JSON, recently deleted
+    ├── SettingsPanel.tsx        ← settings, device-local appearance choice, collapsed weekly-insights exclusions via the shared grouped calendar list, import/export JSON, recently deleted
     ├── SearchPanel.tsx
     ├── ShortcutsPanel.tsx
     ├── CommandPalette.tsx       ← ⌘K palette
@@ -144,7 +146,10 @@ Supporting modules in `lib/calendar/`:
 - `month-layout.ts` — height-based month-cell event capacity and overflow reservation
 - `recurrence.ts` — series generation plus scoped update/delete transforms
 - `seed.ts` — demo data loader + normalizer
-- `color-model.ts` — color manipulation utilities
+- `color-model.ts` — color manipulation utilities plus the cached perceptual light-mode event-color transform
+
+UI hooks:
+- `hooks/useTheme.ts` — device-local System/Light/Dark preference, resolved root theme, OS-change listener, and cross-tab synchronization
 
 Supabase modules:
 - `hooks/useSupabaseAuth.ts` — persisted email/password session, signup, recovery, password update, and local sign-out
@@ -233,6 +238,8 @@ All three floating context menus (`CalendarMenu`, `GroupMenu`, `EventMenu`) shar
 ## File Conventions
 
 - Components are minified to single lines (no blank lines within a component). Match this style when editing.
+- Edit declarations at their canonical location whenever practical. Do not append compensating overrides to the end of a file unless the cascade layer is intentional and structurally necessary.
+- When changing an interaction state, evaluate the full related state set (rest, hover, active/pressed, selected, focus, and disabled) in every supported theme, preserving the intended hierarchy rather than optimizing one state in isolation.
 - All CSS lives in `app/globals.css` — no CSS modules, no Tailwind.
 - No comments in source files unless the reason is non-obvious.
 - `'use client'` is explicit on files that directly use hooks or browser APIs; child components of client parents are implicitly client even without the directive.
