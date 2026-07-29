@@ -2,6 +2,15 @@ import type { CalendarBlock, RecurrenceScope, TodoItem, TodoTab } from './types'
 
 export type TodoFilter='all'|'open'|'done'
 
+export function resolveTodoLinkClick(activeTodoId:string,linkedBlockIds:string[],blockId:string,keepLinking:boolean){
+  const alreadyLinked=linkedBlockIds.includes(blockId)
+  return{alreadyLinked,nextLinkedBlockIds:alreadyLinked?linkedBlockIds:[...new Set([...linkedBlockIds,blockId])],shiftClickedTodoId:keepLinking?activeTodoId:null,closeImmediately:!keepLinking}
+}
+
+export function shouldEndShiftLinking(clickedTodoId:string|null,activeTodoId:string,shiftKey:boolean){
+  return clickedTodoId===activeTodoId&&!shiftKey
+}
+
 export function visibleTodoTabs(tabs:TodoTab[],items:TodoItem[],filter:TodoFilter){
   const byTab=new Map<string,TodoItem[]>()
   items.forEach(item=>{const tabItems=byTab.get(item.tabId);tabItems?tabItems.push(item):byTab.set(item.tabId,[item])})
