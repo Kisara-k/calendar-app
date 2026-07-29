@@ -1,7 +1,17 @@
 export type Rgb={r:number;g:number;b:number}
 export type Hsl={h:number;s:number;l:number}
 export type Hsv={h:number;s:number;v:number}
+export type Oklch={l:number;c:number;h:number}
 export type HslChannel=keyof Hsl
+
+const LIGHT_EVENT_SOURCE_LIGHTNESS_MIN=.18
+const LIGHT_EVENT_SOURCE_LIGHTNESS_MAX=.92
+const LIGHT_EVENT_OUTPUT_LIGHTNESS_MIN=.54
+const LIGHT_EVENT_OUTPUT_LIGHTNESS_MAX=.76
+const LIGHT_EVENT_CHROMA_BOOST_MIN=1.26
+const LIGHT_EVENT_CHROMA_BOOST_MAX=1.42
+const LIGHT_EVENT_CHROMA_MAX=.28
+const OKLCH_GAMUT_SEARCH_STEPS=14
 
 export const clamp=(n:number,min=0,max=255)=>Math.max(min,Math.min(max,n))
 export const hexToRgb=(hex:string):Rgb|null=>{const v=hex.replace('#','');return /^[0-9a-f]{6}$/i.test(v)?{r:parseInt(v.slice(0,2),16),g:parseInt(v.slice(2,4),16),b:parseInt(v.slice(4,6),16)}:null}
@@ -13,3 +23,13 @@ export function hsvToRgb({h,s,v}:Hsv):Rgb{h=((h%360)+360)%360;const c=v*s,x=c*(1
 export function setHslChannel(model:Hsl,key:HslChannel,value:number):Hsl{return {...model,[key]:key==='h'?((value%360)+360)%360:clamp(value,0,100)}}
 export function setPickerSaturationValue(model:Hsl,s:number,v:number):{model:Hsl;rgb:Rgb;hsv:Hsv}{const hsv={h:model.h,s:clamp(s,0,1),v:clamp(v,0,1)},rgb=hsvToRgb(hsv),derived=rgbToHsl(rgb);return {hsv,rgb,model:{h:model.h,s:derived.s,l:derived.l}}}
 export function parseColor(value:string):{rgb:Rgb;hsl:Hsl}|null{const text=value.trim(),hex=hexToRgb(text);if(hex)return {rgb:hex,hsl:rgbToHsl(hex)};const parts=text.replace(/^hsla?\s*\(/i,'').replace(/\)\s*$/,'').replace(/%/g,' ').split(/[\s,]+/).filter(Boolean).map(Number);if(parts.length<3||parts.slice(0,3).some(Number.isNaN))return null;const hsl={h:((parts[0]%360)+360)%360,s:clamp(parts[1],0,100),l:clamp(parts[2],0,100)},rgb=hslToRgb(hsl);return {rgb,hsl}}
+
+const srgbToLinear=(value:number)=>{const channel=value/255;return channel<=.04045?channel/12.92:Math.pow((channel+.055)/1.055,2.4)}
+const linearToSrgb=(value:number)=>255*(value<=.0031308?12.92*value:1.055*Math.pow(value,1/2.4)-.055)
+export function rgbToOklch({r,g,b}:Rgb):Oklch{r=srgbToLinear(r);g=srgbToLinear(g);b=srgbToLinear(b);const l=Math.cbrt(.4122214708*r+.5363325363*g+.0514459929*b),m=Math.cbrt(.2119034982*r+.6806995451*g+.1073969566*b),s=Math.cbrt(.0883024619*r+.2817188376*g+.6299787005*b),lightness=.2104542553*l+.793617785*m-.0040720468*s,a=1.9779984951*l-2.428592205*m+.4505937099*s,axisB=.0259040371*l+.7827717662*m-.808675766*s;return{l:lightness,c:Math.hypot(a,axisB),h:(Math.atan2(axisB,a)*180/Math.PI+360)%360}}
+function oklchToRgbUnclamped({l,c,h}:Oklch):Rgb{const radians=h*Math.PI/180,a=c*Math.cos(radians),axisB=c*Math.sin(radians),ll=l+.3963377774*a+.2158037573*axisB,mm=l-.1055613458*a-.0638541728*axisB,ss=l-.0894841775*a-1.291485548*axisB,l3=ll*ll*ll,m3=mm*mm*mm,s3=ss*ss*ss;return{r:linearToSrgb(4.0767416621*l3-3.3077115913*m3+.2309699292*s3),g:linearToSrgb(-1.2684380046*l3+2.6097574011*m3-.3413193965*s3),b:linearToSrgb(-.0041960863*l3-.7034186147*m3+1.707614701*s3)}}
+const inSrgb=({r,g,b}:Rgb)=>r>=0&&r<=255&&g>=0&&g<=255&&b>=0&&b<=255
+export function oklchToRgb(model:Oklch):Rgb{let candidate=oklchToRgbUnclamped(model);if(inSrgb(candidate))return candidate;let low=0,high=model.c;for(let index=0;index<OKLCH_GAMUT_SEARCH_STEPS;index++){const chroma=(low+high)/2,next=oklchToRgbUnclamped({...model,c:chroma});if(inSrgb(next)){low=chroma;candidate=next}else high=chroma}return candidate}
+const smoothstep=(from:number,to:number,value:number)=>{const t=clamp((value-from)/(to-from),0,1);return t*t*(3-2*t)}
+const lightEventColorCache=new Map<string,string>()
+export function deriveLightEventColor(color:string):string{const key=color.toUpperCase(),cached=lightEventColorCache.get(key);if(cached)return cached;const rgb=hexToRgb(key);if(!rgb)return color;const source=rgbToOklch(rgb),position=smoothstep(LIGHT_EVENT_SOURCE_LIGHTNESS_MIN,LIGHT_EVENT_SOURCE_LIGHTNESS_MAX,source.l),lightness=LIGHT_EVENT_OUTPUT_LIGHTNESS_MAX+(LIGHT_EVENT_OUTPUT_LIGHTNESS_MIN-LIGHT_EVENT_OUTPUT_LIGHTNESS_MAX)*position,chromaBoost=LIGHT_EVENT_CHROMA_BOOST_MAX+(LIGHT_EVENT_CHROMA_BOOST_MIN-LIGHT_EVENT_CHROMA_BOOST_MAX)*position,chroma=Math.min(source.c*chromaBoost,LIGHT_EVENT_CHROMA_MAX),derived=rgbToHex(oklchToRgb({l:lightness,c:chroma,h:source.h}));lightEventColorCache.set(key,derived);return derived}
