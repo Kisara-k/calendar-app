@@ -25,7 +25,7 @@ export type CalendarCategory = {
 
 export type CalendarGroup = { id:string; name:string }
 
-export type TodoTab = { id:string; name:string }
+export type TodoTab = { id:string; name:string; favorite?:boolean }
 
 export type TodoItem = {
   id: string

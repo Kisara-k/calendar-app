@@ -5,7 +5,7 @@ export type TodoFilter='all'|'open'|'done'
 export function visibleTodoTabs(tabs:TodoTab[],items:TodoItem[],filter:TodoFilter){
   const byTab=new Map<string,TodoItem[]>()
   items.forEach(item=>{const tabItems=byTab.get(item.tabId);tabItems?tabItems.push(item):byTab.set(item.tabId,[item])})
-  return tabs.filter(tab=>{const tabItems=byTab.get(tab.id)??[];return tabItems.length===0||filter==='all'||tabItems.some(item=>filter==='open'?!item.completed:!!item.completed)})
+  return tabs.filter(tab=>{const tabItems=byTab.get(tab.id)??[];return !!tab.favorite||tabItems.length===0||filter==='all'||tabItems.some(item=>filter==='open'?!item.completed:!!item.completed)})
 }
 
 export function recurringScopeIds(blocks:CalendarBlock[],block:CalendarBlock,scope:RecurrenceScope){

@@ -1015,6 +1015,11 @@ export function useCalendarStore(user: User) {
       commit((v) => ({ ...v, settings: { ...v.settings, todoTabs: (v.settings.todoTabs ?? []).map((tab) => tab.id === id ? { ...tab, name } : tab) } }), "debounced"),
     [commit],
   );
+  const toggleTodoTabFavorite = useCallback(
+    (id: string) =>
+      commit((v) => ({ ...v, settings: { ...v.settings, todoTabs: (v.settings.todoTabs ?? []).map((tab) => tab.id === id ? { ...tab, favorite: !tab.favorite } : tab) } })),
+    [commit],
+  );
   const deleteTodoTab = useCallback(
     (id: string) =>
       commit((v) => {
@@ -1298,6 +1303,7 @@ export function useCalendarStore(user: User) {
       createGroup,
       createTodoTab,
       renameTodoTab,
+      toggleTodoTabFavorite,
       deleteTodoTab,
       reorderTodoTabs,
       createTodoItem,
@@ -1351,6 +1357,7 @@ export function useCalendarStore(user: User) {
       createGroup,
       createTodoTab,
       renameTodoTab,
+      toggleTodoTabFavorite,
       deleteTodoTab,
       reorderTodoTabs,
       createTodoItem,
