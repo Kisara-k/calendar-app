@@ -127,7 +127,7 @@ app/page.tsx  (dynamic, ssr:false)
     │   └── RecurrenceEditor.tsx ← daily/weekly/multiple-days repeat controls
     │       └── WeekdayPicker.tsx ← shared compact weekday selector, also used by Settings
     ├── FloatingMenus.tsx        ← EventMenu (right-click on block)
-    ├── InsightsPanel.tsx        ← weekly stats panel; omits calendars excluded in settings from every metric; Daily load reuses the By calendar grouped order
+    ├── InsightsPanel.tsx        ← weekly stats panel; omits calendars excluded in settings from every metric; Daily load stacks the By calendar grouped order bottom-to-top
     ├── SettingsPanel.tsx        ← settings, collapsed weekly-insights exclusions via the shared grouped calendar list, import/export JSON, recently deleted
     ├── SearchPanel.tsx
     ├── ShortcutsPanel.tsx
