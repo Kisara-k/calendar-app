@@ -27,7 +27,7 @@ This is an optimistic time-blocking web app. Users plan their week in the **Plan
 
 SSR is disabled for the entire app via `dynamic(..., { ssr: false })` in `app/page.tsx` because all state is client-only.
 
-Appearance supports System, Light, and Dark modes. The preference is device-local in `localStorage` (`tempo-theme`), is applied to the root document before React renders to prevent a theme flash, and intentionally does not enter synchronized calendar settings or undo history. A calendar's stored color and editor lightness remain the dark-mode ground truth; light-mode events derive a cached, hue-preserving OKLCH display color with smoothly reversed lightness, controlled boosted chroma, and sRGB gamut mapping.
+Appearance supports System, Light, and Dark modes. The preference is device-local in `localStorage` (`tempo-theme`), is applied to the root document before React renders to prevent a theme flash, and intentionally does not enter synchronized calendar settings or undo history. A calendar's stored color and color-editing controls remain the dark-mode ground truth. `CalendarApp` is the single presentation boundary: it derives memoized, role-specific light-mode calendar arrays through the cached, hue-preserving OKLCH transform. Event surfaces use a slightly darker, higher-chroma event role plus a theme-controlled surface mix, while all other calendar-colored UI uses one brighter non-event role. The role ranges are tuned against their final opaque or composited rendering so non-event swatches remain slightly darker than visible event fills. Raw calendars are passed separately only to color editing, persistence, and export paths, preventing derived colors from being saved. Leaf renderers never import the color model.
 
 ---
 
@@ -146,7 +146,7 @@ Supporting modules in `lib/calendar/`:
 - `month-layout.ts` — height-based month-cell event capacity and overflow reservation
 - `recurrence.ts` — series generation plus scoped update/delete transforms
 - `seed.ts` — demo data loader + normalizer
-- `color-model.ts` — color manipulation utilities plus the cached perceptual light-mode event-color transform
+- `color-model.ts` — color manipulation utilities plus the shared cached perceptual calendar-color transform
 
 UI hooks:
 - `hooks/useTheme.ts` — device-local System/Light/Dark preference, resolved root theme, OS-change listener, and cross-tab synchronization

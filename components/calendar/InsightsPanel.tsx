@@ -16,7 +16,7 @@ function fmtDate(iso:string){const d=fromISO(iso);return d.toLocaleDateString('e
 function fmtDur(h:number){const m=Math.round(h*60);return m<60?`${m} min`:`${+(h.toFixed(1))} h`}
 function fmtH(h:number){const m=Math.round(h*60);return m<60?`${m}m`:`${+(h.toFixed(1))}h`}
 function polar(cx:number,cy:number,r:number,deg:number):[number,number]{const a=(deg-90)*Math.PI/180;return[cx+r*Math.cos(a),cy+r*Math.sin(a)]}
-function sectorArc(cx:number,cy:number,r:number,inner:number,s:number,e:number){if(e-s<0.5)return '';const[x1,y1]=polar(cx,cy,r,s),[x2,y2]=polar(cx,cy,r,e),[x3,y3]=polar(cx,cy,inner,e),[x4,y4]=polar(cx,cy,inner,s);const la=e-s>180?1:0;return `M${x1},${y1}A${r},${r},0,${la},1,${x2},${y2}L${x3},${y3}A${inner},${inner},0,${la},0,${x4},${y4}Z`}
+function sectorArc(cx:number,cy:number,r:number,inner:number,s:number,e:number){if(e-s<0.5)return '';if(e-s>=359.999)return `M${cx},${cy-r}A${r},${r},0,1,1,${cx},${cy+r}A${r},${r},0,1,1,${cx},${cy-r}L${cx},${cy-inner}A${inner},${inner},0,1,0,${cx},${cy+inner}A${inner},${inner},0,1,0,${cx},${cy-inner}Z`;const[x1,y1]=polar(cx,cy,r,s),[x2,y2]=polar(cx,cy,r,e),[x3,y3]=polar(cx,cy,inner,e),[x4,y4]=polar(cx,cy,inner,s);const la=e-s>180?1:0;return `M${x1},${y1}A${r},${r},0,${la},1,${x2},${y2}L${x3},${y3}A${inner},${inner},0,${la},0,${x4},${y4}Z`}
 
 export function InsightsPanel({blocks,categories,groups,settings,dates,layer,onClose}:Props){
   const asideRef=useRef<HTMLElement|null>(null)
@@ -36,8 +36,6 @@ export function InsightsPanel({blocks,categories,groups,settings,dates,layer,onC
   const categoryTotal=ringValues.reduce((a,x)=>a+x.value,0),ringScale=categoryTotal?allocated/categoryTotal:0
   let rCursor=0
   const ringSegs=ringValues.map(x=>{const startDeg=Math.min(360,rCursor/available*360);rCursor+=x.value*ringScale;const endDeg=Math.min(360,rCursor/available*360);return {...x,startDeg,endDeg}})
-  const ringGradient=`conic-gradient(${[...ringSegs.map(x=>`${x.color} ${x.startDeg/360*100}% ${Math.min(100,x.endDeg/360*100)}%`),`var(--insight-track) ${Math.min(100,allocated/available*100)}% 100%`].join(',')})`
-
   function renderAllocRow(c:CalendarCategory,plan:number,actual:number){
     const value=catVal({plan,actual}),events=scoped.filter(b=>b.categoryId===c.id).sort((a,b)=>a.date.localeCompare(b.date)||a.start-b.start),durationTotal=events.reduce((sum,b)=>sum+b.end-b.start,0),delta=actual-plan
     return <div className="allocation-row" key={c.id}><div><span><i style={{background:c.color}}/>{c.name}</span><span className="allocation-values">{layer==='actual'&&<small className={delta>0?'positive':delta===0?'neutral':''}>{delta>=0?'+':''}{delta.toFixed(1)}h vs plan</small>}<b>{value.toFixed(1)}h</b></span></div><div className="allocation-track"><span className="allocation-fill" style={{width:`${value/max*100}%`}}>{events.map(b=><i key={b.id} style={{background:c.color,width:`${(b.end-b.start)/Math.max(durationTotal,.01)*100}%`,cursor:'default'}} onMouseEnter={e=>showTip(e,{title:b.title||'Untitled',timeRight:fmtDur(b.end-b.start),color:c.color,lines:[{text:fmtDate(b.date)},{text:formatTime(b.start,settings.timeFormat)},...(b.notes?.trim()?[{text:b.notes.trim()}]:[])]})} onMouseLeave={hideTip}/>)}</span></div></div>
@@ -46,10 +44,10 @@ export function InsightsPanel({blocks,categories,groups,settings,dates,layer,onC
   const maxH=settings.sleepHour-settings.wakeHour,dailyLoads=dates.map(d=>uniqueHours(scoped.filter(b=>b.date===toISO(d)))),maxDailyH=Math.max(0,...dailyLoads),dailyCeilingH=maxDailyH>maxH?Math.ceil(maxDailyH/2)*2:maxH,gridHours=Array.from({length:Math.floor(dailyCeilingH/2)},(_,i)=>(i+1)*2),dailyPlotHeight=dailyCeilingH/maxH*75,dailyChartHeight=dailyPlotHeight+17
   return <aside ref={asideRef as React.RefObject<HTMLElement>} className="context-panel insights-panel"><div className="panel-head"><span><BarChart3 size={15}/>Weekly insights</span>{onClose&&<button className="quiet-icon" aria-label="Close insights" onClick={onClose}><X size={16}/></button>}</div><div className="insights-body">
     <div className="allocation-hero">
-      <div className="allocation-ring segmented" style={{background:ringGradient}}>
+      <div className="allocation-ring segmented">
         <span style={{zIndex:1,position:'relative'}}><b>{allocated.toFixed(1)}h</b><small>blocked</small></span>
         <svg style={{position:'absolute',inset:0,borderRadius:'50%',zIndex:2,overflow:'visible'}} viewBox="0 0 68 68">
-          {ringSegs.map((x,i)=>{const dayLines:TipLine[]=dates.flatMap(d=>{const iso=toISO(d);const catEvts=scoped.filter(b=>b.categoryId===x.cat.id&&b.date===iso).sort((a,b)=>a.start-b.start);if(!catEvts.length)return [];return [{text:fmtDate(iso)},...catEvts.map(b=>({text:b.title||'Untitled',hi:true,mid:formatTime(b.start,settings.timeFormat),right:fmtH(b.end-b.start)}))]});return <path key={i} d={sectorArc(34,34,34,28,x.startDeg,x.endDeg)} fill="transparent" style={{pointerEvents:'all',cursor:'default'}} onMouseEnter={e=>{const r=(e.currentTarget as SVGPathElement).getBoundingClientRect();makeTip(r,{title:x.cat.name,timeRight:`${x.value.toFixed(1)} h`,color:x.color,lines:dayLines})}} onMouseLeave={hideTip}/>})}
+          {ringSegs.map((x,i)=>{const dayLines:TipLine[]=dates.flatMap(d=>{const iso=toISO(d);const catEvts=scoped.filter(b=>b.categoryId===x.cat.id&&b.date===iso).sort((a,b)=>a.start-b.start);if(!catEvts.length)return [];return [{text:fmtDate(iso)},...catEvts.map(b=>({text:b.title||'Untitled',hi:true,mid:formatTime(b.start,settings.timeFormat),right:fmtH(b.end-b.start)}))]});return <path key={i} d={sectorArc(34,34,34,28,x.startDeg,x.endDeg)} fill={x.color} style={{pointerEvents:'all',cursor:'default'}} onMouseEnter={e=>{const r=(e.currentTarget as SVGPathElement).getBoundingClientRect();makeTip(r,{title:x.cat.name,timeRight:`${x.value.toFixed(1)} h`,color:x.color,lines:dayLines})}} onMouseLeave={hideTip}/>})}
         </svg>
       </div>
       <div><strong>{Math.round(allocated/available*100)}%</strong><span>of waking hours</span><small>{unallocated.toFixed(1)}h unallocated</small></div>
