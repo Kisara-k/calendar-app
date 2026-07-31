@@ -1,6 +1,6 @@
 export type Layer = 'plan' | 'actual'
 export type ViewMode = 'day' | 'week' | 'month'
-export type Panel = 'event' | 'insights' | 'settings' | 'search' | 'shortcuts' | null
+export type Panel = 'event' | 'todos' | 'insights' | 'settings' | 'search' | 'shortcuts' | null
 export type UtilityPanel = Exclude<Panel, 'event'>
 export type ActualStatus = 'completed' | 'partial' | 'skipped' | 'unplanned'
 export type RecurrenceScope = 'only' | 'following' | 'all'
@@ -24,6 +24,19 @@ export type CalendarCategory = {
 }
 
 export type CalendarGroup = { id:string; name:string }
+
+export type TodoTab = { id:string; name:string; favorite?:boolean }
+
+export type TodoItem = {
+  id: string
+  tabId: string
+  parentId?: string
+  title: string
+  notes?: string
+  expectedMinutes?: number
+  linkedBlockIds?: string[]
+  completed?: boolean
+}
 
 export type DeletedCalendar = { category: CalendarCategory; blocks: CalendarBlock[]; deletedAt: string }
 
@@ -65,6 +78,8 @@ export type CalendarSettings = {
   autoFormatTitles?: boolean
   insightsExcludedCategoryIds?: string[]
   favoriteCategoryIds?: string[]
+  todoTabs?: TodoTab[]
+  todoItems?: TodoItem[]
   userFirstName?: string
   userLastName?: string
 }

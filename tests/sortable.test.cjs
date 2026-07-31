@@ -1,0 +1,6 @@
+const fs=require('node:fs')
+const path=require('node:path')
+const test=require('node:test')
+const assert=require('node:assert/strict')
+
+test('sortable collections use constrained in-place previews without detached overlays',()=>{const componentDir=path.resolve(__dirname,'../components/calendar'),sidebar=fs.readFileSync(path.join(componentDir,'Sidebar.tsx'),'utf8'),todos=fs.readFileSync(path.join(componentDir,'TodoPanel.tsx'),'utf8'),core=fs.readFileSync(path.join(componentDir,'LiveSortable.ts'),'utf8'),css=fs.readFileSync(path.resolve(__dirname,'../app/globals.css'),'utf8');assert.ok(sidebar.includes("from './LiveSortable'")&&todos.includes("from './LiveSortable'"));assert.ok(!sidebar.includes('DragOverlay')&&!todos.includes('DragOverlay'));assert.ok(core.includes("'data-live-sortable'")&&core.includes("'data-live-dragging'")&&core.includes('x:0,scaleX:1,scaleY:1')&&core.includes('CSS.Transform.toString(liveTransform)'));assert.ok(css.includes('[data-live-dragging=true]{opacity:.35}'));assert.ok(css.includes('.todo-body,.compact-calendars{overflow-x:hidden}'));assert.ok(css.includes(':is(.todo-body,.compact-calendars):has([data-live-dragging=true]) [data-live-sortable]{pointer-events:none}'));assert.ok(!css.includes('.todo-subtree-preview{'))})

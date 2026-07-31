@@ -1,15 +1,12 @@
 'use client'
 import { CalendarPlus, Check, ChevronRight, Copy, FolderPlus, GitMerge, Heart, Palette, Pencil, Star, Trash2, X } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { CATEGORY_COLORS } from '@/lib/calendar/constants'
 import type { CalendarBlock, CalendarCategory, CalendarGroup, Layer } from '@/lib/calendar/types'
 import { toTitleCase } from '@/lib/calendar/title-case'
 import { GroupedCalendarList } from './GroupedCalendarList'
 import { ColorEditor } from './ColorEditor'
-
-function useDismiss(onClose:()=>void){const ref=useRef<HTMLDivElement>(null);useEffect(()=>{const down=(e:PointerEvent)=>{if(!ref.current?.contains(e.target as Node))onClose()};const key=(e:KeyboardEvent)=>{if(e.key==='Escape')onClose()};window.addEventListener('pointerdown',down);window.addEventListener('keydown',key);return()=>{window.removeEventListener('pointerdown',down);window.removeEventListener('keydown',key)}},[onClose]);return ref}
-const position=(x:number,y:number,width=230)=>({left:Math.max(6,Math.min(x,window.innerWidth-width-6)),top:Math.max(6,Math.min(y,window.innerHeight-350))})
-function useViewportMenuPosition(ref:React.RefObject<HTMLDivElement|null>,x:number,y:number,width=230,scrollSelector?:string){const [style,setStyle]=useState<React.CSSProperties>(()=>position(x,y,width));useLayoutEffect(()=>{const node=ref.current;if(!node)return;const place=()=>{const scrollRegion=scrollSelector?node.querySelector<HTMLElement>(scrollSelector):null,naturalHeight=node.scrollHeight-(scrollRegion?.clientHeight??0)+(scrollRegion?.scrollHeight??0),viewportHeight=window.innerHeight-12,height=Math.min(naturalHeight,viewportHeight),top=Math.max(6,Math.min(y,window.innerHeight-height-6)),left=Math.max(6,Math.min(x,window.innerWidth-width-6)),clamped=naturalHeight>viewportHeight;setStyle({left,top,...(clamped?{maxHeight:viewportHeight,...(!scrollSelector?{overflowY:'auto',overscrollBehavior:'contain'}:{})}:{})})};place();const observer=new ResizeObserver(place);observer.observe(node);const scrollRegion=scrollSelector?node.querySelector<HTMLElement>(scrollSelector):null;if(scrollRegion)observer.observe(scrollRegion);window.addEventListener('resize',place);return()=>{observer.disconnect();window.removeEventListener('resize',place)}},[ref,x,y,width,scrollSelector]);return style}
+import { useDismiss, useViewportMenuPosition } from './FloatingMenuCore'
 
 type CalendarMenuProps={x:number;y:number;calendar:CalendarCategory;calendars:CalendarCategory[];groups:CalendarGroup[];isDefault:boolean;isFavorite:boolean;onRename:(name:string)=>void;onColor:(v:string)=>void;onDefault:()=>void;onFavorite:()=>void;onDelete:()=>void;onMerge:(target:string)=>void;onClose:()=>void}
 export function CalendarMenu(p:CalendarMenuProps){const [name,setName]=useState(p.calendar.name),[mergeOpen,setMergeOpen]=useState(false);const cancel=useRef(false);const commit=()=>{if(!cancel.current&&name!==p.calendar.name)p.onRename(name);cancel.current=false};const close=()=>{commit();p.onClose()};const ref=useDismiss(close),menuStyle=useViewportMenuPosition(ref,p.x,p.y);return <div ref={ref} className="floating-menu calendar-menu" style={menuStyle} onContextMenu={e=>e.preventDefault()}>
