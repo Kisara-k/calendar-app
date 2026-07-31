@@ -30,6 +30,7 @@ export type TodoTab = { id:string; name:string; favorite?:boolean }
 export type TodoItem = {
   id: string
   tabId: string
+  parentId?: string
   title: string
   notes?: string
   expectedMinutes?: number

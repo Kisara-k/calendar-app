@@ -1,6 +1,86 @@
 import type { CalendarBlock, RecurrenceScope, TodoItem, TodoTab } from './types'
 
 export type TodoFilter='all'|'open'|'done'
+export type TodoTreeRow={item:TodoItem;depth:number}
+export type TodoItemLayout={id:string;tabId:string;parentId?:string}
+
+export function normalizeTodoHierarchy(items:TodoItem[]){
+  const byId=new Map(items.map(item=>[item.id,item])),parents=new Map<string,string|undefined>()
+  items.forEach(item=>{const parent=item.parentId?byId.get(item.parentId):undefined;parents.set(item.id,parent&&parent.id!==item.id&&parent.tabId===item.tabId?parent.id:undefined)})
+  items.forEach(item=>{const seen=new Set([item.id]);let parentId=parents.get(item.id);while(parentId){if(seen.has(parentId)){parents.set(item.id,undefined);break}seen.add(parentId);parentId=parents.get(parentId)}})
+  const normalized=items.map((item):TodoItem=>({...item,parentId:parents.get(item.id)})),tabOrder=Array.from(new Set(normalized.map(item=>item.tabId))),result:TodoItem[]=[]
+  tabOrder.forEach(tabId=>{const tabItems=normalized.filter(item=>item.tabId===tabId),children=new Map<string|undefined,TodoItem[]>();tabItems.forEach(item=>{const list=children.get(item.parentId);list?list.push(item):children.set(item.parentId,[item])});const visit=(item:TodoItem)=>{result.push(item);(children.get(item.id)??[]).forEach(visit)};(children.get(undefined)??[]).forEach(visit)})
+  return result
+}
+
+export function todoTreeRows(items:TodoItem[],tabId:string):TodoTreeRow[]{
+  const normalized=normalizeTodoHierarchy(items.filter(item=>item.tabId===tabId)),children=new Map<string|undefined,TodoItem[]>()
+  normalized.forEach(item=>{const list=children.get(item.parentId);list?list.push(item):children.set(item.parentId,[item])})
+  const rows:TodoTreeRow[]=[]
+  const visit=(item:TodoItem,depth:number)=>{rows.push({item,depth});(children.get(item.id)??[]).forEach(child=>visit(child,depth+1))}
+  ;(children.get(undefined)??[]).forEach(item=>visit(item,0))
+  return rows
+}
+
+export function filteredTodoTreeRows(rows:TodoTreeRow[],filter:TodoFilter){
+  if(filter==='all')return rows
+  const keep=new Set(rows.filter(({item})=>filter==='open'?!item.completed:!!item.completed).map(({item})=>item.id)),byId=new Map(rows.map(({item})=>[item.id,item]))
+  Array.from(keep).forEach(id=>{let parentId=byId.get(id)?.parentId;while(parentId){keep.add(parentId);parentId=byId.get(parentId)?.parentId}})
+  return rows.filter(({item})=>keep.has(item.id))
+}
+
+export function todoExpectedMinutes(items:TodoItem[]){
+  const normalized=normalizeTodoHierarchy(items),children=new Map<string,TodoItem[]>(),result=new Map<string,number|undefined>()
+  normalized.forEach(item=>{if(item.parentId){const list=children.get(item.parentId);list?list.push(item):children.set(item.parentId,[item])}})
+  const resolve=(item:TodoItem,path=new Set<string>()):number|undefined=>{if(item.expectedMinutes!=null)return item.expectedMinutes;if(path.has(item.id))return undefined;const nextPath=new Set(path).add(item.id),values=(children.get(item.id)??[]).map(child=>resolve(child,nextPath)).filter((value):value is number=>value!=null),value=values.length?values.reduce((total,current)=>total+current,0):undefined;result.set(item.id,value);return value}
+  normalized.forEach(item=>{if(!result.has(item.id))result.set(item.id,resolve(item))})
+  return result
+}
+
+export function todoDescendantIds(items:TodoItem[],id:string){
+  const children=new Map<string,string[]>(),descendants=new Set<string>()
+  normalizeTodoHierarchy(items).forEach(item=>{if(item.parentId){const list=children.get(item.parentId);list?list.push(item.id):children.set(item.parentId,[item.id])}})
+  const visit=(parentId:string)=>{(children.get(parentId)??[]).forEach(childId=>{if(descendants.has(childId))return;descendants.add(childId);visit(childId)})}
+  visit(id)
+  return descendants
+}
+
+export function insertTodoItem(items:TodoItem[],item:TodoItem){
+  if(!item.parentId)return[...items,item]
+  const descendants=todoDescendantIds(items,item.parentId),parentIndex=items.findIndex(candidate=>candidate.id===item.parentId)
+  if(parentIndex<0)return[...items,{...item,parentId:undefined}]
+  let insertAt=parentIndex+1
+  while(insertAt<items.length&&descendants.has(items[insertAt].id))insertAt++
+  const next=[...items];next.splice(insertAt,0,item);return next
+}
+
+export function deleteTodoSubtree(items:TodoItem[],id:string){
+  const removed=todoDescendantIds(items,id);removed.add(id);return items.filter(item=>!removed.has(item.id))
+}
+
+export function moveTodoSubtree(items:TodoItem[],sourceId:string,targetId:string|null,targetTabId:string,horizontalDelta=0,indentWidth=14):TodoItem[]{
+  const normalized=normalizeTodoHierarchy(items),source=normalized.find(item=>item.id===sourceId)
+  if(!source)return normalized
+  const descendants=todoDescendantIds(normalized,sourceId)
+  if(targetId&&(targetId===sourceId||descendants.has(targetId)))return normalized
+  const tabOrder=Array.from(new Set(normalized.map(item=>item.tabId))),sourceRows=todoTreeRows(normalized,source.tabId),sourceDepth=sourceRows.find(row=>row.item.id===sourceId)?.depth??0,subtreeIds=new Set(descendants).add(sourceId),subtree=sourceRows.filter(row=>subtreeIds.has(row.item.id)).map(row=>row.item),remaining=normalized.filter(item=>!subtreeIds.has(item.id)),targetRows=todoTreeRows(remaining,targetTabId)
+  if(targetId&&!targetRows.some(row=>row.item.id===targetId))return normalized
+  let insertAt=targetRows.length,projectedDepth=0
+  if(targetId){
+    const originalRows=todoTreeRows(normalized,targetTabId),sourceIndex=originalRows.findIndex(row=>row.item.id===sourceId),targetIndex=originalRows.findIndex(row=>row.item.id===targetId),remainingTarget=targetRows.findIndex(row=>row.item.id===targetId)
+    insertAt=remainingTarget+(source.tabId===targetTabId&&sourceIndex>=0&&sourceIndex<targetIndex?1:0)
+    const before=targetRows[insertAt-1],after=targetRows[insertAt],desired=sourceDepth+Math.round(horizontalDelta/indentWidth),minDepth=after?.depth??0,maxDepth=(before?.depth??-1)+1
+    projectedDepth=Math.max(minDepth,Math.min(desired,maxDepth))
+  }
+  const before=targetRows[insertAt-1],parentId=projectedDepth===0?undefined:[...targetRows.slice(0,insertAt)].reverse().find(row=>row.depth===projectedDepth-1)?.item.id
+  if(projectedDepth>0&&!parentId)projectedDepth=0
+  const moved=subtree.map(item=>item.id===sourceId?{...item,tabId:targetTabId,parentId:projectedDepth===0?undefined:parentId}:{...item,tabId:targetTabId}),nextTarget=[...targetRows.map(row=>row.item)];nextTarget.splice(insertAt,0,...moved)
+  const byTab=new Map<string,TodoItem[]>()
+  remaining.forEach(item=>{if(item.tabId===targetTabId)return;const list=byTab.get(item.tabId);list?list.push(item):byTab.set(item.tabId,[item])})
+  byTab.set(targetTabId,nextTarget)
+  if(!tabOrder.includes(targetTabId))tabOrder.push(targetTabId)
+  return normalizeTodoHierarchy(tabOrder.flatMap(tabId=>byTab.get(tabId)??[]))
+}
 
 export function resolveTodoLinkClick(activeTodoId:string,linkedBlockIds:string[],blockId:string,keepLinking:boolean){
   const alreadyLinked=linkedBlockIds.includes(blockId)

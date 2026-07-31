@@ -16,6 +16,7 @@ import {
   createSeries,
   removeScoped,
 } from "@/lib/calendar/recurrence";
+import { deleteTodoSubtree, insertTodoItem, normalizeTodoHierarchy } from "@/lib/calendar/todo";
 import {
   applyPatch,
   diffSnapshots,
@@ -1042,9 +1043,9 @@ export function useCalendarStore(user: User) {
     [commit],
   );
   const createTodoItem = useCallback(
-    (tabId: string) => {
-      const item: TodoItem = { id: crypto.randomUUID(), tabId, title: "" };
-      commit((v) => ({ ...v, settings: { ...v.settings, todoItems: [...(v.settings.todoItems ?? []), item] } }));
+    (tabId: string, parentId?: string) => {
+      const item: TodoItem = { id: crypto.randomUUID(), tabId, parentId, title: "" };
+      commit((v) => ({ ...v, settings: { ...v.settings, todoItems: insertTodoItem(v.settings.todoItems ?? [], item) } }));
       return item;
     },
     [commit],
@@ -1056,14 +1057,14 @@ export function useCalendarStore(user: User) {
   );
   const deleteTodoItem = useCallback(
     (id: string) =>
-      commit((v) => ({ ...v, settings: { ...v.settings, todoItems: (v.settings.todoItems ?? []).filter((item) => item.id !== id) } })),
+      commit((v) => ({ ...v, settings: { ...v.settings, todoItems: deleteTodoSubtree(v.settings.todoItems ?? [], id) } })),
     [commit],
   );
   const applyTodoItemLayout = useCallback(
-    (layout: { id: string; tabId: string }[]) =>
+    (layout: { id: string; tabId: string; parentId?: string }[]) =>
       commit((v) => {
         const byId = new Map((v.settings.todoItems ?? []).map((item) => [item.id, item]));
-        return { ...v, settings: { ...v.settings, todoItems: layout.map(({ id, tabId }) => ({ ...byId.get(id)!, tabId })) } };
+        return { ...v, settings: { ...v.settings, todoItems: normalizeTodoHierarchy(layout.flatMap(({ id, tabId, parentId }) => {const item=byId.get(id);return item?[{ ...item, tabId, parentId }]:[]})) } };
       }),
     [commit],
   );
