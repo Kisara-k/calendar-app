@@ -8,7 +8,7 @@ This app uses one Supabase project for authentication, Postgres persistence, and
 - Confirm-email redirects
 - Forgot-password email and password update flow
 - Unique lowercase usernames
-- Normalized, user-owned calendar tables with RLS
+- Normalized, user-owned calendar and to-do tables with RLS
 - Acknowledged browser caching, durable pending-write delivery, ordered change-only pulls, idempotent retries, and private Realtime pull hints
 - A database-enforced 5 MiB logical calendar-data limit per account
 - Email-specific quota overrides managed only by an administrator
@@ -39,20 +39,10 @@ The same two public values may be added to the production hosting provider, so l
 
 1. Open **SQL Editor** in Supabase.
 2. Select **New query**.
-3. Copy the complete contents of `supabase/migrations/20260714000000_database.sql` into the editor and select **Run**.
-4. Create another new query.
-5. Copy the complete contents of `supabase/migrations/20260714010000_password_auth_and_quotas.sql` and select **Run**.
-6. Create a third new query.
-7. Copy the complete contents of `supabase/migrations/20260714020000_concurrency_safety.sql` and select **Run**.
-8. Create a fourth new query.
-9. Copy the complete contents of `supabase/migrations/20260714030000_consistent_snapshot_reads.sql` and select **Run**.
-10. Create a fifth new query.
-11. Copy the complete contents of `supabase/migrations/20260714040000_revision_broadcasts.sql` and select **Run**.
-12. Create a sixth new query.
-13. Copy the complete contents of `supabase/migrations/20260714050000_incremental_sync.sql` and select **Run**.
-14. All six queries should finish with `Success. No rows returned`.
+3. Run every `.sql` file in `supabase/migrations` in filename order, using a new query for each file.
+4. Each query should finish with `Success. No rows returned`.
 
-The second migration creates account profiles and quota entitlements, replaces the write RPC with the quota-enforcing version, and removes direct client write privileges. The third adds expected-revision writes and a private mutation ledger so concurrent browsers cannot silently overwrite one another and ambiguous retries remain idempotent. The fourth loads every normalized table and its revision in one consistent database snapshot. The fifth replaces per-row Realtime events with one minimal revision invalidation per committed patch. The sixth adds per-row revision stamps, ID-only delete tombstones, and the ordered incremental-pull RPC. Do not expose `account_entitlements`, `applied_mutations`, or `workspace_tombstones` through a custom API.
+The migrations progressively add authentication metadata and quotas, expected-revision writes, idempotency, consistent snapshots, minimal Realtime invalidations, ordered incremental pulls, sparse event/note writes, cross-midnight events, and normalized to-do persistence. The to-do migration backfills existing settings JSON, advances each affected workspace checkpoint so cached browsers receive the new rows, and then removes the legacy JSON keys. Do not expose `account_entitlements`, `applied_mutations`, or `workspace_tombstones` through a custom API.
 
 ### CLI method
 
