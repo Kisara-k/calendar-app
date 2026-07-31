@@ -3,6 +3,7 @@ import type { CalendarBlock, RecurrenceScope, TodoItem, TodoTab } from './types'
 export type TodoFilter='all'|'open'|'done'
 export type TodoTreeRow={item:TodoItem;depth:number}
 export type TodoItemLayout={id:string;tabId:string;parentId?:string}
+export type TodoNestingDirection='indent'|'outdent'
 
 export function normalizeTodoHierarchy(items:TodoItem[]){
   const byId=new Map(items.map(item=>[item.id,item])),parents=new Map<string,string|undefined>()
@@ -58,13 +59,44 @@ export function deleteTodoSubtree(items:TodoItem[],id:string){
   const removed=todoDescendantIds(items,id);removed.add(id);return items.filter(item=>!removed.has(item.id))
 }
 
-export function moveTodoSubtree(items:TodoItem[],sourceId:string,targetId:string|null,targetTabId:string,horizontalDelta=0,indentWidth=14):TodoItem[]{
-  const normalized=normalizeTodoHierarchy(items),source=normalized.find(item=>item.id===sourceId)
+export function todoItemNesting(items:TodoItem[],id:string){
+  const normalized=normalizeTodoHierarchy(items),item=normalized.find(candidate=>candidate.id===id)
+  if(!item)return{depth:0,canIndent:false,canOutdent:false}
+  const rows=todoTreeRows(normalized,item.tabId),index=rows.findIndex(row=>row.item.id===id),depth=rows[index]?.depth??0
+  let canIndent=false
+  for(let current=index-1;current>=0;current--){if(rows[current].depth<depth)break;if(rows[current].depth===depth){canIndent=true;break}}
+  return{depth,canIndent,canOutdent:depth>0}
+}
+
+export function changeTodoItemNesting(items:TodoItem[],id:string,direction:TodoNestingDirection){
+  const normalized=normalizeTodoHierarchy(items),source=normalized.find(item=>item.id===id)
   if(!source)return normalized
+  const rows=todoTreeRows(normalized,source.tabId),sourceIndex=rows.findIndex(row=>row.item.id===id),sourceRow=rows[sourceIndex]
+  if(!sourceRow)return normalized
+  if(direction==='indent'){
+    let parentId:string|undefined
+    for(let index=sourceIndex-1;index>=0;index--){if(rows[index].depth<sourceRow.depth)break;if(rows[index].depth===sourceRow.depth){parentId=rows[index].item.id;break}}
+    return parentId?normalizeTodoHierarchy(normalized.map(item=>item.id===id?{...item,parentId}:item)):normalized
+  }
+  if(!source.parentId)return normalized
+  const parent=normalized.find(item=>item.id===source.parentId),parentRow=rows.find(row=>row.item.id===source.parentId)
+  if(!parent||!parentRow)return normalized
+  const subtreeIds=todoDescendantIds(normalized,id);subtreeIds.add(id)
+  const subtree=rows.filter(row=>subtreeIds.has(row.item.id)).map(row=>row.item),remaining=normalized.filter(item=>!subtreeIds.has(item.id)),targetRows=todoTreeRows(remaining,source.tabId),parentIndex=targetRows.findIndex(row=>row.item.id===parent.id)
+  let insertAt=parentIndex+1
+  while(insertAt<targetRows.length&&targetRows[insertAt].depth>parentRow.depth)insertAt++
+  const moved=subtree.map(item=>item.id===id?{...item,parentId:parent.parentId}:item),nextTab=targetRows.map(row=>row.item);nextTab.splice(insertAt,0,...moved)
+  const tabOrder=Array.from(new Set(normalized.map(item=>item.tabId)))
+  return normalizeTodoHierarchy(tabOrder.flatMap(tabId=>tabId===source.tabId?nextTab:remaining.filter(item=>item.tabId===tabId)))
+}
+
+function todoMoveProjection(items:TodoItem[],sourceId:string,targetId:string|null,targetTabId:string,horizontalDelta=0,indentWidth=14){
+  const normalized=normalizeTodoHierarchy(items),source=normalized.find(item=>item.id===sourceId)
+  if(!source)return null
   const descendants=todoDescendantIds(normalized,sourceId)
-  if(targetId&&(targetId===sourceId||descendants.has(targetId)))return normalized
+  if(targetId&&(targetId===sourceId||descendants.has(targetId)))return null
   const tabOrder=Array.from(new Set(normalized.map(item=>item.tabId))),sourceRows=todoTreeRows(normalized,source.tabId),sourceDepth=sourceRows.find(row=>row.item.id===sourceId)?.depth??0,subtreeIds=new Set(descendants).add(sourceId),subtree=sourceRows.filter(row=>subtreeIds.has(row.item.id)).map(row=>row.item),remaining=normalized.filter(item=>!subtreeIds.has(item.id)),targetRows=todoTreeRows(remaining,targetTabId)
-  if(targetId&&!targetRows.some(row=>row.item.id===targetId))return normalized
+  if(targetId&&!targetRows.some(row=>row.item.id===targetId))return null
   let insertAt=targetRows.length,projectedDepth=0
   if(targetId){
     const originalRows=todoTreeRows(normalized,targetTabId),sourceIndex=originalRows.findIndex(row=>row.item.id===sourceId),targetIndex=originalRows.findIndex(row=>row.item.id===targetId),remainingTarget=targetRows.findIndex(row=>row.item.id===targetId)
@@ -74,6 +106,18 @@ export function moveTodoSubtree(items:TodoItem[],sourceId:string,targetId:string
   }
   const before=targetRows[insertAt-1],parentId=projectedDepth===0?undefined:[...targetRows.slice(0,insertAt)].reverse().find(row=>row.depth===projectedDepth-1)?.item.id
   if(projectedDepth>0&&!parentId)projectedDepth=0
+  return{normalized,source,tabOrder,subtree,remaining,targetRows,insertAt,projectedDepth,parentId,sourceDepth}
+}
+
+export function todoProjectedNestingDepth(items:TodoItem[],sourceId:string,targetId:string|null,targetTabId:string,horizontalDelta=0,indentWidth=14){
+  const projection=todoMoveProjection(items,sourceId,targetId,targetTabId,horizontalDelta,indentWidth)
+  return projection?.projectedDepth??todoItemNesting(items,sourceId).depth
+}
+
+export function moveTodoSubtree(items:TodoItem[],sourceId:string,targetId:string|null,targetTabId:string,horizontalDelta=0,indentWidth=14):TodoItem[]{
+  const projection=todoMoveProjection(items,sourceId,targetId,targetTabId,horizontalDelta,indentWidth)
+  if(!projection)return normalizeTodoHierarchy(items)
+  const{source,tabOrder,subtree,remaining,targetRows,insertAt,projectedDepth,parentId}=projection
   const moved=subtree.map(item=>item.id===sourceId?{...item,tabId:targetTabId,parentId:projectedDepth===0?undefined:parentId}:{...item,tabId:targetTabId}),nextTarget=[...targetRows.map(row=>row.item)];nextTarget.splice(insertAt,0,...moved)
   const byTab=new Map<string,TodoItem[]>()
   remaining.forEach(item=>{if(item.tabId===targetTabId)return;const list=byTab.get(item.tabId);list?list.push(item):byTab.set(item.tabId,[item])})
