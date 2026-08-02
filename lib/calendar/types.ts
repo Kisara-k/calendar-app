@@ -5,6 +5,8 @@ export type UtilityPanel = Exclude<Panel, 'event'>
 export type ActualStatus = 'completed' | 'partial' | 'skipped' | 'unplanned'
 export type RecurrenceScope = 'only' | 'following' | 'all'
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6
+export type ShortcutId = 'commandMenu' | 'newBlock' | 'shortcuts' | 'closeClear' | 'duplicateSelected' | 'copySelected' | 'pasteBlocks' | 'selectCalendarBlocks' | 'deleteSelected' | 'undo' | 'redo' | 'today' | 'previousRange' | 'nextRange' | 'previousDay' | 'nextDay' | 'dayView' | 'weekView' | 'monthView' | 'actualLayer' | 'planLayer' | 'todos' | 'insights' | 'search' | 'settings'
+export type KeyboardShortcutOverrides = Partial<Record<ShortcutId,string|null>>
 
 export type RecurrenceRule = {
   frequency: 'weekly'
@@ -82,6 +84,7 @@ export type CalendarSettings = {
   todoItems?: TodoItem[]
   userFirstName?: string
   userLastName?: string
+  keyboardShortcuts?: KeyboardShortcutOverrides
 }
 
 export type CalendarData = {
