@@ -15,6 +15,8 @@ test('command menu actions that were previously unassigned have defaults',()=>{a
 
 test('command menu links directly to the keyboard shortcut editor',()=>{const app=fs.readFileSync(require.resolve('../components/calendar/CalendarApp.tsx'),'utf8');assert.ok(app.includes("label:'Keyboard shortcuts',hint:hint('shortcuts')"));assert.ok(app.includes("run:()=>showUtility('shortcuts')"))})
 
+test('dismissible shortcut surfaces toggle while state-setting commands do not',()=>{const app=fs.readFileSync(require.resolve('../components/calendar/CalendarApp.tsx'),'utf8');assert.ok(app.includes("case'commandMenu':setCommandOpen(current=>!current)"));for(const panel of ['shortcuts','todos','search','settings'])assert.ok(app.includes(`case'${panel}':toggleUtility('${panel}')`));assert.ok(app.includes("case'insights':showUtility('insights')"));assert.ok(app.includes("if(activePanel===next){if(next==='todos')setLinkingTodoId(null);setUtilityPanel(null);return}"))})
+
 test('keyboard events normalize Ctrl and Command to the portable Mod token',()=>{assert.equal(shortcutFromKeyboardEvent(keyEvent('KeyK',{ctrlKey:true})),'Mod+KeyK');assert.equal(shortcutFromKeyboardEvent(keyEvent('KeyK',{metaKey:true})),'Mod+KeyK');assert.ok(eventMatchesShortcut(keyEvent('Slash',{shiftKey:true}),'Shift+Slash'))})
 
 test('overrides can customize, disable, and reset a shortcut',()=>{let overrides=withShortcutOverride(undefined,'today','KeyG');assert.equal(resolveShortcuts(overrides).today,'KeyG');overrides=withShortcutOverride(overrides,'today',null);assert.equal(resolveShortcuts(overrides).today,null);overrides=withShortcutOverride(overrides,'today',defaultShortcuts.today);assert.equal(resolveShortcuts(overrides).today,defaultShortcuts.today)})
