@@ -60,7 +60,7 @@ CalendarSettings  — wakeHour, sleepHour, snapMinutes, defaultDuration,
                     timeFormat, underlayOpacity,
                     defaultCategoryId, planLabel?, actualLabel?,
                     autoFormatTitles?, insightsExcludedCategoryIds?, favoriteCategoryIds?,
-                    todoTabs?, todoItems?
+                    todoTabs?, todoItems?, keyboardShortcuts?
 
 TodoTab           — id, name, favorite?
 TodoItem          — id, tabId, parentId?, title, notes?, expectedMinutes?,
@@ -101,6 +101,7 @@ Workspace/profile tables are scoped by `user_id`; foreign keys preserve group/ca
 - **Default category** — One calendar is marked default; new blocks use it automatically.
 - **Calendar visibility** — Hidden calendars remain available in the calendar sidebar and Settings, but their events are omitted from week, day, and month views and they are omitted from calendar-selection dropdowns and menus.
 - **Form controls** — Simple option menus use the shared app-themed `CalendarDropdown` rather than browser-native selects, keeping dark/light surfaces, selected states, and keyboard behavior consistent with the calendar. Specialized calendar assignment continues to use `CalendarSelect` and its grouped colored rows.
+- **Keyboard shortcuts** — `lib/calendar/shortcuts.ts` is the single registry for command IDs, labels, groups, defaults, key-event matching, and platform-aware plain-text display. Settings and the command menu's `Edit keyboard shortcuts` action open a recorder-based editor for every keyboard command; duplicate assignments are rejected, individual bindings can be disabled or reset, reset-all restores the registry defaults, and Escape, a second click, or any pointer press outside the active recorder exits recording. Shortcut rows follow the app's quiet, borderless row language and use only the shared accent underline while recording. Overrides are stored in synchronized `accounts.settings` JSON through the ordinary `commit()` path, so they follow the account without a schema migration. Only differences from defaults (plus explicit `null` disables) are stored. Every command-palette action has a default binding, including Shift+T for To-do and Ctrl/Cmd+, for Settings, and palette/header hints always render the resolved binding. Command surfaces use text rather than a platform-specific Command glyph.
 - **Day bounds** — The configured wake and sleep times shade unavailable hours and draw Daily-load-style dashed rules across the timed-event grid at both boundaries. The timed grid adds a viewport-sized bottom scroll buffer when needed so the configured wake time can always align with the top of the scroll pane, including tall or resized layouts.
 - **Tabs (groups)** — Calendars are organized into collapsible tabs in the sidebar.
 - **Drag and reorder** — Every sortable collection uses the shared `LiveSortable` core for translated in-place feedback and active-row state. Sidebar and to-do source rows render only vertical translation, preventing horizontal pointer travel from widening a scroll container; to-do nesting still derives its projected depth from the pointer's unbounded horizontal delta. Sortable scroll panes clip horizontal overflow. While sorting, sortable rows stop receiving pointer hover states so intermediate targets do not highlight beneath the live drag preview. Size-derived drag scaling is normalized away so text and controls never stretch while crossing containers. Calendar groups, calendars, to-do rows, and calendar events all move their existing surfaces directly without detached drag overlays.
@@ -149,16 +150,17 @@ app/page.tsx  (dynamic, ssr:false)
     ├── FloatingMenuCore.ts      ← shared outside-click/Escape dismissal and viewport positioning for all floating menus
     ├── TodoPanel.tsx            ← closable right panel; sortable nested task trees, inline task editing, recursive estimate rollups, notes, completion, compact linked events, and direct event-link mode
     ├── InsightsPanel.tsx        ← default weekly stats panel; accessible from the command menu/shortcut; omits calendars excluded in settings from every metric; Daily load stacks the By calendar grouped order bottom-to-top
-    ├── SettingsPanel.tsx        ← settings, device-local appearance choice, collapsed weekly-insights exclusions via the shared grouped calendar list, import/export JSON, recently deleted
+    ├── SettingsPanel.tsx        ← settings, device-local appearance choice, keyboard-shortcut editor entry, collapsed weekly-insights exclusions via the shared grouped calendar list, import/export JSON, recently deleted
     ├── SearchPanel.tsx
-    ├── ShortcutsPanel.tsx
-    ├── CommandPalette.tsx       ← ⌘K palette
+    ├── ShortcutsPanel.tsx       ← conflict-aware shortcut recorder with disable, per-binding reset, and reset-all controls
+    ├── CommandPalette.tsx       ← command palette with resolved user shortcut hints
     └── ResizeHandle.tsx         ← draggable sidebar resize
 ```
 
 Supporting modules in `lib/calendar/`:
 - `types.ts` — all TypeScript types
 - `constants.ts` — color palette, default settings
+- `shortcuts.ts` — keyboard command registry, defaults, override normalization, matching, and display formatting
 - `date.ts` — date helpers (formatTime, configurable-start weekDates/startOfWeek, toISO, etc.)
 - `block-time.ts` — cross-midnight block clock conversion and per-day display segmentation
 - `layout.ts` — timed-event overlap lanes, including Notion-style thin-event overlays
@@ -253,7 +255,7 @@ EventInspector outcome buttons are also live-save. Clicking an inactive outcome 
 - Soft-deleted calendars remain as calendar rows with `deleted_at`; their blocks stay normalized and are reattached on restore.
 
 ### Tests
-- `npm test` runs persistent Node regression tests. Recurrence tests cover multi-day and daily generation, absolute schedule assignment, immutable canonical anchors, cross-day moves, mixed scoped edits/deletes, all pairs of successive following cuts, and all three-following permutations followed by all-events moves from every source occurrence. To-do tests cover timed allocation, recurring link scopes, hierarchy repair and filtering, recursive estimate rollups, subtree insertion/deletion, cross-tab moves, horizontal reparenting, and cycle rejection. Sync tests cover strict cursor validation, changed-row replacement, normalized task metadata/note independence, task-link cleanup on event deletion, tombstones, collapsed multi-revision pulls, two-browser convergence, same-row disjoint edits, same-field conflicts, both conflict choices, delete-versus-edit conflicts, nested settings merges, and object-order stability.
+- `npm test` runs persistent Node regression tests. Recurrence tests cover multi-day and daily generation, absolute schedule assignment, immutable canonical anchors, cross-day moves, mixed scoped edits/deletes, all pairs of successive following cuts, and all three-following permutations followed by all-events moves from every source occurrence. To-do tests cover timed allocation, recurring link scopes, hierarchy repair and filtering, recursive estimate rollups, subtree insertion/deletion, cross-tab moves, horizontal reparenting, and cycle rejection. Shortcut tests cover unique defaults, complete command-palette coverage, portable Ctrl/Cmd matching, customization/disable/reset behavior, outside-click recording dismissal, quiet-row styling, import normalization, and platform-aware text labels. Sync tests cover strict cursor validation, changed-row replacement, normalized task metadata/note independence, task-link cleanup on event deletion, tombstones, collapsed multi-revision pulls, two-browser convergence, same-row disjoint edits, same-field conflicts, both conflict choices, delete-versus-edit conflicts, nested settings merges, and object-order stability.
 - `tests/incremental-sync.sql` is a rollback-only linked-database integration test. It verifies separate event/note delta transfer, field-level event and note updates, idempotent retry, stale-browser rejection, delete tombstones, collapsed insert/delete history, and empty current-cursor pulls without leaving test data behind.
 
 ---
