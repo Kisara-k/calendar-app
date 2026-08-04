@@ -46,13 +46,21 @@ export function todoDescendantIds(items:TodoItem[],id:string){
   return descendants
 }
 
-export function insertTodoItem(items:TodoItem[],item:TodoItem){
-  if(!item.parentId)return[...items,item]
-  const descendants=todoDescendantIds(items,item.parentId),parentIndex=items.findIndex(candidate=>candidate.id===item.parentId)
-  if(parentIndex<0)return[...items,{...item,parentId:undefined}]
+export function insertTodoItem(items:TodoItem[],item:TodoItem,afterId?:string){
+  const anchorId=afterId??item.parentId
+  if(!anchorId)return[...items,item]
+  const anchor=items.find(candidate=>candidate.id===anchorId)
+  if(!anchor||anchor.tabId!==item.tabId)return[...items,{...item,parentId:item.parentId&&items.some(candidate=>candidate.id===item.parentId&&candidate.tabId===item.tabId)?item.parentId:undefined}]
+  const descendants=todoDescendantIds(items,anchorId),parentIndex=items.findIndex(candidate=>candidate.id===anchorId)
   let insertAt=parentIndex+1
   while(insertAt<items.length&&descendants.has(items[insertAt].id))insertAt++
   const next=[...items];next.splice(insertAt,0,item);return next
+}
+
+export function todoEnterPlacement(rows:TodoTreeRow[],id:string){
+  const index=rows.findIndex(row=>row.item.id===id),row=rows[index]
+  if(!row)return null
+  return{parentId:rows[index+1]?.depth>row.depth?row.item.id:row.item.parentId,afterId:row.item.id}
 }
 
 export function deleteTodoSubtree(items:TodoItem[],id:string){
