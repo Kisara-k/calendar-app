@@ -1010,7 +1010,7 @@ export function useCalendarStore(user: User) {
         const tabs = v.settings.todoTabs ?? [];
         if (tabs.length <= 1) return v;
         const fallback = tabs.find((tab) => tab.id !== id)!;
-        return { ...v, settings: { ...v.settings, todoTabs: tabs.filter((tab) => tab.id !== id), todoItems: (v.settings.todoItems ?? []).map((item) => item.tabId === id ? { ...item, tabId: fallback.id } : item) } };
+        return { ...v, settings: { ...v.settings, collapsedTodoTabIds: (v.settings.collapsedTodoTabIds ?? []).filter((tabId) => tabId !== id), todoTabs: tabs.filter((tab) => tab.id !== id), todoItems: (v.settings.todoItems ?? []).map((item) => item.tabId === id ? { ...item, tabId: fallback.id } : item) } };
       }),
     [commit],
   );
