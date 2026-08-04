@@ -80,6 +80,8 @@ export type CalendarSettings = {
   autoFormatTitles?: boolean
   insightsExcludedCategoryIds?: string[]
   favoriteCategoryIds?: string[]
+  todoPanelTitle?: string
+  collapsedTodoTabIds?: string[]
   todoTabs?: TodoTab[]
   todoItems?: TodoItem[]
   userFirstName?: string

@@ -17,6 +17,7 @@ import {
   removeScoped,
 } from "@/lib/calendar/recurrence";
 import { deleteTodoSubtree, insertTodoItem, normalizeTodoHierarchy } from "@/lib/calendar/todo";
+import { emptySnapshotHistory, recordSnapshot, redoSnapshot, undoSnapshot, type SnapshotHistory } from "@/lib/calendar/history";
 import {
   applyPatch,
   diffSnapshots,
@@ -78,7 +79,8 @@ export function useCalendarStore(user: User) {
   const [unsaved, setUnsaved] = useState(false);
   const clientIdRef = useRef(crypto.randomUUID()),
     outboxId = `${user.id}:${clientIdRef.current}`;
-  const baseRef = useRef<DatabaseSnapshot | null>(null),
+  const historyRef = useRef<SnapshotHistory<CalendarData>>(emptySnapshotHistory()),
+    baseRef = useRef<DatabaseSnapshot | null>(null),
     lastCommitIdRef = useRef<string | null>(null),
     firstSyncBaseRef = useRef<DatabaseSnapshot | null>(null),
     initializedRef = useRef(false),
@@ -99,6 +101,9 @@ export function useCalendarStore(user: User) {
       serverMerged: DatabaseSnapshot;
       paths: string[];
     } | null>(null);
+
+  const publishHistory = useCallback((history:SnapshotHistory<CalendarData>)=>{historyRef.current=history;setPast(history.past);setFuture(history.future)},[]),
+    resetHistoryState=useCallback(()=>{lastCommitIdRef.current=null;publishHistory(emptySnapshotHistory())},[publishHistory]);
 
   useEffect(() => {
     dataRef.current = data;
@@ -198,9 +203,7 @@ export function useCalendarStore(user: User) {
       setSyncConflict(null);
       setData(next);
       if (resetHistory) {
-        lastCommitIdRef.current = null;
-        setPast([]);
-        setFuture([]);
+        resetHistoryState();
       }
       dirtyRef.current = false;
       setUnsaved(false);
@@ -208,7 +211,7 @@ export function useCalendarStore(user: User) {
       cacheSnapshot(normalized);
       setSyncStatus("synced");
     },
-    [cacheSnapshot, clearOutbox],
+    [cacheSnapshot, clearOutbox, resetHistoryState],
   );
   const flush = useCallback(async () => {
     if (
@@ -294,9 +297,7 @@ export function useCalendarStore(user: User) {
           dataRef.current = merged;
           mutationRef.current = null;
           setData(merged);
-          lastCommitIdRef.current = null;
-          setPast([]);
-          setFuture([]);
+          resetHistoryState();
           cacheSnapshot(remote);
           if (result.conflicts.length) {
             conflictRef.current = {
@@ -363,6 +364,7 @@ export function useCalendarStore(user: User) {
     cleanupRecovered,
     clearOutbox,
     persistOutbox,
+    resetHistoryState,
     scheduleFlush,
   ]);
   flushRef.current = flush;
@@ -472,9 +474,7 @@ export function useCalendarStore(user: User) {
         const next = fromDatabaseSnapshot(localBranch);
         dataRef.current = next;
         setData(next);
-        lastCommitIdRef.current = null;
-        setPast([]);
-        setFuture([]);
+        resetHistoryState();
         if (remote) cacheSnapshot(remote);
         dirtyRef.current = !patchIsEmpty(diffSnapshots(remote, localBranch));
         setUnsaved(dirtyRef.current);
@@ -573,6 +573,7 @@ export function useCalendarStore(user: User) {
     cacheSnapshot,
     cleanupRecovered,
     persistOutbox,
+    resetHistoryState,
     scheduleFlush,
     user,
   ]);
@@ -668,9 +669,7 @@ export function useCalendarStore(user: User) {
       setSyncConflict(null);
       dataRef.current = next;
       setData(next);
-      lastCommitIdRef.current = null;
-      setPast([]);
-      setFuture([]);
+      resetHistoryState();
       dirtyRef.current = !patchIsEmpty(diffSnapshots(conflict.remote, chosen));
       setUnsaved(dirtyRef.current);
       mutationRef.current = null;
@@ -688,6 +687,7 @@ export function useCalendarStore(user: User) {
       cleanupRecovered,
       clearOutbox,
       persistOutbox,
+      resetHistoryState,
       scheduleFlush,
     ],
   );
@@ -701,64 +701,47 @@ export function useCalendarStore(user: User) {
       if (!initializedRef.current) return null;
       if (replaceCommitId) {
         if (lastCommitIdRef.current !== replaceCommitId) return null;
-        setPast((items) => {
-          if (!items.length) return items;
-          const next = change(items[items.length - 1]);
-          setFuture([]);
-          dataRef.current = next;
-          markDirty(next, mode);
-          setData(next);
-          return items;
-        });
+        const base=historyRef.current.past[historyRef.current.past.length-1];
+        if(!base)return null;
+        const next=change(base);
+        publishHistory({...historyRef.current,future:[]});
+        dataRef.current=next;
+        markDirty(next,mode);
+        setData(next);
         return replaceCommitId;
       }
+      const current=dataRef.current,next=change(current);
+      if(next===current)return null;
       const commitId = crypto.randomUUID();
       lastCommitIdRef.current = commitId;
-      setData((current) => {
-        setPast((items) => [
-          ...items.slice(-(HISTORY_LIMIT - 1)),
-          structuredClone(current),
-        ]);
-        setFuture([]);
-        const next = change(current);
-        dataRef.current = next;
-        markDirty(next, mode);
-        return next;
-      });
+      publishHistory(recordSnapshot(historyRef.current,current,HISTORY_LIMIT));
+      dataRef.current=next;
+      markDirty(next,mode);
+      setData(next);
       return commitId;
     },
-    [markDirty],
+    [markDirty,publishHistory],
   );
   const undoHistory = useCallback(() => {
     if (!initializedRef.current) return;
+    const transition=undoSnapshot(historyRef.current,dataRef.current,HISTORY_LIMIT);
+    if(!transition)return;
     lastCommitIdRef.current = null;
-    setPast((items) => {
-      if (!items.length) return items;
-      const previous = items[items.length - 1];
-      setFuture((next) =>
-        [structuredClone(dataRef.current), ...next].slice(0, HISTORY_LIMIT),
-      );
-      dataRef.current = previous;
-      markDirty(previous);
-      setData(previous);
-      return items.slice(0, -1);
-    });
-  }, [markDirty]);
+    publishHistory(transition.history);
+    dataRef.current=transition.current;
+    markDirty(transition.current);
+    setData(transition.current);
+  }, [markDirty,publishHistory]);
   const redoHistory = useCallback(() => {
     if (!initializedRef.current) return;
+    const transition=redoSnapshot(historyRef.current,dataRef.current,HISTORY_LIMIT);
+    if(!transition)return;
     lastCommitIdRef.current = null;
-    setFuture((items) => {
-      if (!items.length) return items;
-      const next = items[0];
-      setPast((previous) =>
-        [...previous, structuredClone(dataRef.current)].slice(-HISTORY_LIMIT),
-      );
-      dataRef.current = next;
-      markDirty(next);
-      setData(next);
-      return items.slice(1);
-    });
-  }, [markDirty]);
+    publishHistory(transition.history);
+    dataRef.current=transition.current;
+    markDirty(transition.current);
+    setData(transition.current);
+  }, [markDirty,publishHistory]);
 
   const addBlock = useCallback(
     (block: CalendarBlock) =>
@@ -1027,7 +1010,7 @@ export function useCalendarStore(user: User) {
         const tabs = v.settings.todoTabs ?? [];
         if (tabs.length <= 1) return v;
         const fallback = tabs.find((tab) => tab.id !== id)!;
-        return { ...v, settings: { ...v.settings, todoTabs: tabs.filter((tab) => tab.id !== id), todoItems: (v.settings.todoItems ?? []).map((item) => item.tabId === id ? { ...item, tabId: fallback.id } : item) } };
+        return { ...v, settings: { ...v.settings, collapsedTodoTabIds: (v.settings.collapsedTodoTabIds ?? []).filter((tabId) => tabId !== id), todoTabs: tabs.filter((tab) => tab.id !== id), todoItems: (v.settings.todoItems ?? []).map((item) => item.tabId === id ? { ...item, tabId: fallback.id } : item) } };
       }),
     [commit],
   );
@@ -1043,9 +1026,9 @@ export function useCalendarStore(user: User) {
     [commit],
   );
   const createTodoItem = useCallback(
-    (tabId: string, parentId?: string) => {
+    (tabId: string, parentId?: string, afterId?: string) => {
       const item: TodoItem = { id: crypto.randomUUID(), tabId, parentId, title: "" };
-      commit((v) => ({ ...v, settings: { ...v.settings, todoItems: insertTodoItem(v.settings.todoItems ?? [], item) } }));
+      commit((v) => ({ ...v, settings: { ...v.settings, todoItems: insertTodoItem(v.settings.todoItems ?? [], item, afterId) } }));
       return item;
     },
     [commit],
