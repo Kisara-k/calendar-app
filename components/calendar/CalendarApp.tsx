@@ -1,16 +1,17 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import type { User } from '@supabase/supabase-js'
 import { AlertTriangle, BarChart3, CalendarDays, Check, Keyboard, ListTodo, Search, Settings2, Target } from 'lucide-react'
 import { useCalendarStore } from '@/hooks/useCalendarStore'
 import type { ResolvedTheme, ThemePreference } from '@/hooks/useTheme'
 import { deriveLightCalendarColor } from '@/lib/calendar/color-model'
-import { addDays, rangeLabel, toISO, weekDates } from '@/lib/calendar/date'
+import { addDays, adjacentVisibleDay, rangeLabel, toISO, weekDates } from '@/lib/calendar/date'
 import { toTitleCase } from '@/lib/calendar/title-case'
 import { recurringScopeIds, resolveTodoLinkClick, shouldEndShiftLinking } from '@/lib/calendar/todo'
 import { eventMatchesShortcut, formatShortcut, resolveShortcuts, shortcutDefinitions, withShortcutOverride } from '@/lib/calendar/shortcuts'
-import type { CalendarBlock, Layer, Panel, RecurrenceRule, RecurrenceScope, ShortcutId, UtilityPanel, ViewMode } from '@/lib/calendar/types'
+import type { CalendarBlock, Layer, Panel, RecurrenceRule, RecurrenceScope, ShortcutId, UtilityPanel, ViewMode, Weekday } from '@/lib/calendar/types'
 import { AppHeader } from './AppHeader'
 import { Sidebar } from './Sidebar'
 import { WeekGrid } from './WeekGrid'
@@ -41,7 +42,10 @@ export function CalendarApp({user,onSignOut,theme,themePreference,onThemePrefere
   const editScopeRef=useRef<{id:string;scope:RecurrenceScope}|null>(null)
   const shiftClickedTodoRef=useRef<string|null>(null)
   const legacyTodoPanelPreferencesRef=useRef(false)
+  const horizontalWheelRef=useRef({total:0,pending:0,timer:0,frame:0})
+  const weekTransitionRef=useRef<ViewTransition|null>(null)
   const dates=useMemo(()=>view==='day'?[anchor]:weekDates(anchor,data.settings.showWeekends,data.settings.weekStartsOn),[anchor,view,data.settings.showWeekends,data.settings.weekStartsOn])
+  const displayedWeekStartRef=useRef(dates[0]);displayedWeekStartRef.current=dates[0]
   const renderedBlocks=useMemo(()=>draftBlock?[...data.blocks,draftBlock]:data.blocks,[data.blocks,draftBlock])
   const nonEventCategories=useMemo(()=>theme==='light'?data.categories.map(category=>({...category,color:deriveLightCalendarColor(category.color,'nonEvent')})):data.categories,[data.categories,theme])
   const eventCategories=useMemo(()=>theme==='light'?data.categories.map(category=>({...category,color:deriveLightCalendarColor(category.color,'event')})):data.categories,[data.categories,theme])
@@ -58,6 +62,7 @@ export function CalendarApp({user,onSignOut,theme,themePreference,onThemePrefere
   const showUtility=useCallback((next:Panel)=>{if(next==='event')return;editScopeRef.current=null;if(next!=='todos')setLinkingTodoId(null);setUtilityPanel(next);setEventOpen(false);setDraftBlock(null)},[])
   const toggleUtility=useCallback((next:Exclude<UtilityPanel,null>)=>{if(activePanel===next){if(next==='todos')setLinkingTodoId(null);setUtilityPanel(null);return}showUtility(next)},[activePanel,showUtility])
   const navigate=useCallback((n:number,oneDay=false)=>setAnchor(v=>view==='month'&&!oneDay?new Date(v.getFullYear(),v.getMonth()+n,1):addDays(v,n*(oneDay?1:view==='day'?1:7))),[view])
+  const shiftWeekByDay=useCallback((direction:-1|1)=>{const next=adjacentVisibleDay(displayedWeekStartRef.current,direction,data.settings.showWeekends),apply=()=>{displayedWeekStartRef.current=next;setAnchor(next);store.patchSettings({weekStartsOn:((next.getDay()+6)%7) as Weekday})};if(!document.startViewTransition||window.matchMedia('(prefers-reduced-motion: reduce)').matches){apply();return}document.documentElement.dataset.weekDirection=direction>0?'next':'previous';const transition=document.startViewTransition(()=>flushSync(apply));weekTransitionRef.current=transition;transition.finished.finally(()=>{if(weekTransitionRef.current!==transition)return;weekTransitionRef.current=null;delete document.documentElement.dataset.weekDirection})},[data.settings.showWeekends,store.patchSettings])
   const createDraft=useCallback((input:Omit<CalendarBlock,'id'>)=>{const block={...input,id:crypto.randomUUID()};setDraftBlock(block);return block},[])
   const updateMany=useCallback((changes:CalendarBlock[])=>{const nextDraft=draftBlock?changes.find(block=>block.id===draftBlock.id):undefined;if(nextDraft)setDraftBlock(nextDraft);const persisted=changes.filter(block=>block.id!==draftBlock?.id);if(persisted.length)store.updateBlocks(persisted)},[draftBlock,store])
   const newBlock=useCallback(()=>{editScopeRef.current=null;const date=view==='month'?anchor:dates[0],block=createDraft({date:toISO(date),start:9,end:9+data.settings.defaultDuration,title:'',categoryId:data.settings.defaultCategoryId,layer});setSelectedIds([block.id]);setEventOpen(true)},[anchor,dates,view,layer,data.settings.defaultCategoryId,data.settings.defaultDuration,createDraft])
@@ -79,6 +84,8 @@ export function CalendarApp({user,onSignOut,theme,themePreference,onThemePrefere
   const selectAllOfCalendars=useCallback(()=>{if(!selectedIds.length)return;const catIds=new Set(renderedBlocks.filter(b=>selectedIds.includes(b.id)).map(b=>b.categoryId));setSelectedIds(renderedBlocks.filter(b=>(b.allDay||b.layer===layer)&&dates.some(d=>toISO(d)===b.date)&&catIds.has(b.categoryId)&&(data.categories.find(c=>c.id===b.categoryId)?.visible??true)).map(b=>b.id))},[selectedIds,renderedBlocks,layer,dates,data.categories])
 
   useEffect(()=>{if(window.innerWidth<850)setSidebarOpen(false);const left=Number(localStorage.getItem('tempo-left-sidebar-width')),right=Number(localStorage.getItem('tempo-right-sidebar-width'));if(left)setLeftWidth(Math.max(190,Math.min(360,left)));if(right)setRightWidth(Math.max(250,Math.min(440,right)))},[])
+  useEffect(()=>{if(view!=='week')return;const node=document.querySelector('.calendar-surface');if(!(node instanceof HTMLElement))return;const gesture=horizontalWheelRef.current,consume=()=>{gesture.frame=0;gesture.total+=gesture.pending;gesture.pending=0;const threshold=Math.max(56,Math.min(88,node.clientWidth/16));if(Math.abs(gesture.total)<threshold)return;const direction=gesture.total>0?1:-1;gesture.total-=direction*threshold;shiftWeekByDay(direction);if(Math.abs(gesture.total)>=threshold)gesture.frame=requestAnimationFrame(consume)},wheel=(event:WheelEvent)=>{if(event.ctrlKey)return;const unit=event.deltaMode===WheelEvent.DOM_DELTA_LINE?16:event.deltaMode===WheelEvent.DOM_DELTA_PAGE?node.clientWidth:1,x=event.deltaX*unit,y=event.deltaY*unit;if(Math.abs(x)<=Math.abs(y)||Math.abs(x)<3)return;event.preventDefault();window.clearTimeout(gesture.timer);gesture.timer=window.setTimeout(()=>{gesture.total=0;gesture.pending=0},140);gesture.pending+=x;if(!gesture.frame)gesture.frame=requestAnimationFrame(consume)};node.addEventListener('wheel',wheel,{passive:false});return()=>{node.removeEventListener('wheel',wheel);cancelAnimationFrame(gesture.frame);gesture.frame=0}},[shiftWeekByDay,view])
+  useEffect(()=>()=>{window.clearTimeout(horizontalWheelRef.current.timer);cancelAnimationFrame(horizontalWheelRef.current.frame)},[])
   useEffect(()=>{if(!store.ready||legacyTodoPanelPreferencesRef.current)return;legacyTodoPanelPreferencesRef.current=true;const legacy=readLegacyTodoPanelPreferences(),validTabs=new Set((data.settings.todoTabs??[]).map(tab=>tab.id)),patch:{todoPanelTitle?:string;collapsedTodoTabIds?:string[]}={};if((data.settings.todoPanelTitle??'To-do list')==='To-do list'&&legacy.title)patch.todoPanelTitle=legacy.title;if(!(data.settings.collapsedTodoTabIds?.length)&&legacy.collapsedTabIds.length)patch.collapsedTodoTabIds=legacy.collapsedTabIds.filter(id=>validTabs.has(id));localStorage.removeItem('tempo-todo-panel-title');localStorage.removeItem('tempo-collapsed-todo-tabs');if(Object.keys(patch).length)store.patchSettings(patch)},[data.settings.collapsedTodoTabIds,data.settings.todoPanelTitle,data.settings.todoTabs,store.patchSettings,store.ready])
   const resizeLeft=(width:number)=>{setLeftWidth(width);localStorage.setItem('tempo-left-sidebar-width',String(Math.round(width)))}
   const resizeRight=(width:number)=>{setRightWidth(width);localStorage.setItem('tempo-right-sidebar-width',String(Math.round(width)))}
