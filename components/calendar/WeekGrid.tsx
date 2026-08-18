@@ -158,11 +158,11 @@ export function WeekGrid({dates,blocks,categories,settings,layer,selectedIds,lin
             {crossTimedSegments.filter(segment=>segment.date===toISO(date)).map(segment=>{const visual={...segment.block,date:segment.date,start:segment.start,end:segment.end};return <EventCard key={`cross-${segment.key}`} block={visual} category={catOf(segment.block)} settings={settings} top={cardTop(segment)} height={cardHeight(segment)} left={1} width={98} selected={false} creationPreview/>})}
           </div>)}
           <div className="day-bound-line" style={{top:settings.wakeHour*hourHeight}}/><div className="day-bound-line" style={{top:settings.sleepHour*hourHeight}}/>
-          {nowIndex>=0&&<div className="now-line" style={{top:nowTime*hourHeight,left:`calc(${nowIndex/dates.length*100}% + 1px)`,width:`${100/dates.length}%`}}><span>{formatTime(nowTime,settings.timeFormat)}</span></div>}
+          {nowIndex>=0&&<div className="now-line" style={{top:nowTime*hourHeight,left:`calc(${nowIndex/dates.length*100}% + 1px)`,width:`calc(${100/dates.length}% - 1px)`}}><span>{formatTime(nowTime,settings.timeFormat)}</span></div>}
           {hoverTime&&!interaction&&<div className={`hover-time${scrollRef.current&&hoverTime.time*hourHeight>scrollRef.current.scrollTop+scrollRef.current.clientHeight-24?' flip':''}`} style={{top:hoverTime.time>=24?24*hourHeight-1:hoverTime.time*hourHeight,left:`${hoverTime.day/dates.length*100}%`,width:`${100/dates.length}%`}}><span>{formatTime(hoverTime.time,settings.timeFormat)}</span></div>}
         </div>
       </div>
-      <div aria-hidden="true" style={{height:bottomPadding}}/>
+      <div aria-hidden="true" style={{height:bottomPadding+12}}/>
     </div>
     {interaction?.type==='select'&&interaction.moved&&<div className="selection-rect" style={{left:Math.min(interaction.x1,interaction.x2),top:Math.min(interaction.y1,interaction.y2),width:Math.abs(interaction.x2-interaction.x1),height:Math.abs(interaction.y2-interaction.y1)}}/>}
     {interaction?.moved&&interaction.type!=='select'&&interaction.type!=='all-day-move'&&<div className="drag-tooltip">{interaction.type==='move'?(interaction.dropAllDay?`Move to ${DAY_NAMES[(dates[interaction.dateIndex].getDay()+6)%7]} · all day`:`Move to ${DAY_NAMES[(dates[interaction.dateIndex].getDay()+6)%7]} ${formatTime(interaction.start,settings.timeFormat)}`):interaction.type==='resize'?`${formatTime(interaction.end,settings.timeFormat)} · ${Math.round((interaction.end-interaction.block.start)*60)} min`:live?`${formatTime(live.start,settings.timeFormat)} – ${formatTime(live.end,settings.timeFormat)}`:''}</div>}

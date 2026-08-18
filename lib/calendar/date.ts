@@ -12,6 +12,8 @@ export function addDays(date: Date, amount: number) {
   const next=new Date(date); next.setDate(next.getDate()+amount); return next
 }
 
+export function adjacentVisibleDay(date:Date,direction:-1|1,showWeekends=true){let next=addDays(date,direction);while(!showWeekends&&(next.getDay()===0||next.getDay()===6))next=addDays(next,direction);return next}
+
 export function differenceInCalendarDays(later: Date, earlier: Date) {
   return Math.round((Date.UTC(later.getFullYear(),later.getMonth(),later.getDate())-Date.UTC(earlier.getFullYear(),earlier.getMonth(),earlier.getDate()))/86400000)
 }
