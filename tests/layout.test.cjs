@@ -6,7 +6,7 @@ const ts=require('typescript')
 require.extensions['.ts']=(module,filename)=>{const source=fs.readFileSync(filename,'utf8'),output=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,esModuleInterop:true}}).outputText;module._compile(output,filename)}
 
 const {overlapLayout}=require('../lib/calendar/layout.ts')
-const {monthEventLayout,monthEventPriority}=require('../lib/calendar/month-layout.ts')
+const {monthActualPlanFallbackIds,monthEventLayout,monthEventPriority}=require('../lib/calendar/month-layout.ts')
 const order=new Map([['work',0]])
 const block=(id,start,end)=>({id,date:'2026-07-15',start,end,title:id,categoryId:'work',layer:'plan'})
 
@@ -29,3 +29,7 @@ test('month event rows expand with cell height and reserve room for overflow',()
 test('month event rows do not render controls that cannot fit',()=>{assert.deepEqual(monthEventLayout(40,3),{visible:0,showMore:false})})
 
 test('month priority keeps all-day events unique and places favorite timed events next',()=>{const favorites=new Set(['favorite']),events=[{id:'normal',allDay:false,categoryId:'normal'},{id:'favorite',allDay:false,categoryId:'favorite'},{id:'favorite-all-day',allDay:true,categoryId:'favorite'}];const sorted=[...events].sort((a,b)=>monthEventPriority(a.allDay,a.categoryId,favorites)-monthEventPriority(b.allDay,b.categoryId,favorites));assert.deepEqual(sorted.map(event=>event.id),['favorite-all-day','favorite','normal']);assert.equal(new Set(sorted.map(event=>event.id)).size,events.length)})
+
+test('actual month includes only unmatched favorite planned events that have not ended',()=>{const favorites=new Set(['favorite']),planned=(id,date,start,end,categoryId='favorite')=>({...block(id,start,end),date,categoryId}),blocks=[planned('ongoing','2026-07-15',9,11),planned('future','2026-07-16',9,10),planned('passed','2026-07-15',7,9),planned('ordinary','2026-07-16',9,10,'work'),planned('copied','2026-07-16',10,11),planned('natural','2026-07-16',11,12),{...planned('copy','2026-07-16',10,11),id:'actual-copy',layer:'actual',sourcePlanId:'copied'},{...planned('natural','2026-07-16',11,12),id:'actual-natural',layer:'actual'}],ids=monthActualPlanFallbackIds(blocks,favorites,new Date(2026,6,15,10).getTime());assert.deepEqual([...ids],['ongoing','future'])})
+
+test('month all-day creation is scoped to the date header hover row',()=>{const month=fs.readFileSync(require.resolve('../components/calendar/MonthView.tsx'),'utf8'),app=fs.readFileSync(require.resolve('../components/calendar/CalendarApp.tsx'),'utf8'),css=fs.readFileSync(require.resolve('../app/globals.css'),'utf8');assert.ok(month.includes('className="month-day-head"')&&month.includes('onCreateAllDay(d)'));assert.ok(!month.includes('title="Add all-day event"'));assert.ok(app.includes('createMonthAllDay')&&app.includes('layer,allDay:true'));assert.ok(css.includes('.month-day-head:hover .month-all-day-create')&&!css.includes('.month-grid>div:hover .month-all-day-create'));assert.ok(css.includes('background:color-mix(in srgb,var(--surface-hover) 55%,var(--surface))'))})
